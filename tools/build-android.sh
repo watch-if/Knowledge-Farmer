@@ -145,7 +145,12 @@ version_code=${FARMER_ANDROID_VERSION_CODE:-1}
 [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
 sed -i "s|^version/code=.*|version/code=$version_code|" "$copy/export_presets.cfg"
 "$godot" --headless --path "$copy" --export-release "$preset" "$scratch/base.apk"
-(cd "$scratch/inject" && zip -q -0 -r "$scratch/base.apk" lib)
+# Keep the runtime archive seekable without decompressing the outer APK on every read.
+runtime_entry=assets/assets/android-runtime/runtime.zip
+mkdir -p "$scratch/inject/$(dirname "$runtime_entry")"
+ln "$assets/runtime.zip" "$scratch/inject/$runtime_entry"
+zip -qd "$scratch/base.apk" "$runtime_entry"
+(cd "$scratch/inject" && zip -q -0 -r "$scratch/base.apk" lib "$runtime_entry")
 "$build_tools/zipalign" -f -P 16 4 "$scratch/base.apk" "$scratch/aligned.apk"
 if [[ -n ${FARMER_ANDROID_KEYSTORE:-} ]]; then
   export FARMER_ANDROID_PASSWORD=${FARMER_ANDROID_PASSWORD:?Set FARMER_ANDROID_PASSWORD}

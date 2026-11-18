@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   android-smoke:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -60,8 +60,11 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 1 -alias farmer -dname 'CN=farmer Android runtime test'
           tools/build-android.sh x86_64 build/android/smoke.apk
           adb start-server
-          "$ANDROID_HOME/emulator/emulator" -avd farmer -no-window -no-audio -no-boot-anim \
-            -no-snapshot -gpu swiftshader_indirect -accel on -port 5570 > build/android/emulator.log 2>&1 &
+          emulator="$ANDROID_HOME/emulator/emulator"
+          "$emulator" -accel-check | tee build/android/accel.log
+          "$emulator" -avd farmer -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect -feature -Vulkan -no-metrics -memory 2048 -cores 2 \
+            -accel on -port 5570 > build/android/emulator.log 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
           device=emulator-5570
@@ -75,9 +78,10 @@ jobs:
             sleep 2
           done
           if [[ "$booted" != true ]]; then
-            tail -15 build/android/emulator.log | while IFS= read -r line; do
+            awk '/ERROR|FATAL/ { print }' build/android/emulator.log | tail -5 | while IFS= read -r line; do
               echo "::error title=Emulator startup::$line"
             done
+            printf '::error title=Emulator diagnostic::%s\n' "$(tail -18 build/android/emulator.log | paste -sd '|' -)"
             exit 1
           fi
           adb -s "$device" install --streaming -r build/android/smoke.apk
