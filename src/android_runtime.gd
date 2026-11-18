@@ -82,6 +82,8 @@ static func command_prefix(native_dir: String, program: String) -> PackedStringA
 	var preloads := PackedStringArray()
 	for name in GLIBC_LIBS:
 		preloads.append(native_dir.path_join("libfarmer_%s.so" % name))
+	if program == "python":
+		preloads.append(native_dir.path_join("libfarmer_libpython.so"))
 	return PackedStringArray([
 		native_dir.path_join("libfarmer_loader.so"),
 		"--library-path", native_dir,

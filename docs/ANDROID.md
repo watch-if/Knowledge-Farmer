@@ -4,7 +4,7 @@ Android 是原生 Godot 横屏应用。正式 APK 以 `org.watchif.farmer` 和 A
 
 ## 构建
 
-使用 Godot 4.6.3、该版本的 `android_release.apk` 模板、JDK、Android SDK 的 `build-tools;36.0.0` 和 `patchelf`。ARM64 是手机包，x86_64 是模拟器包。工具的下载缓存位于 `build/android-downloads`。
+使用 Godot 4.6.3、该版本的 `android_release.apk` 模板、JDK、Android SDK 的 `build-tools;36.0.0` 。构建用 Lean 发行包中的 Clang 和 LLD 链接 Python 启动器。ARM64 是手机包，x86_64 是模拟器包。工具的下载缓存位于 `build/android-downloads`。
 
 ```bash
 export ANDROID_SDK_ROOT=/path/to/android/sdk

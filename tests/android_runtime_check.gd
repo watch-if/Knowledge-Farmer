@@ -18,5 +18,7 @@ func _initialize() -> void:
 	assert(argv[0].ends_with("/libfarmer_loader.so"))
 	assert(argv[-1].ends_with("/libfarmer_lean.so"))
 	assert(argv[4].contains("libfarmer_c.so") and argv[4].contains("libfarmer_util.so"))
+	var python := Runtime.command_prefix("/data/app/pkg/lib/arm64", "python")
+	assert(python[4].contains("libfarmer_libpython.so"))
 	print("Android runtime path and launcher checks passed")
 	quit()

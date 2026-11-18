@@ -24,6 +24,7 @@ case "$abi" in
     lean_package=lean-4.19.0-linux_aarch64
     lean_digest=f19136d56bc3a5dc9af21edc88e64256c192d3f42c3e872dbeb30e392d7ad206
     libc_digest=baaa9aa184e2f21738c5819055e6740cc5b22f198e3f416e33f82b40ff6933d8
+    crt_digest=28d478134722dcd4b0bd2045a199301d18713bf95947b9fce66634e7aeacab2e
     ;;
   x86_64)
     preset='Android Emulator'
@@ -34,6 +35,7 @@ case "$abi" in
     lean_package=lean-4.19.0-linux
     lean_digest=6fe3ce97a58f44e2b3567d455b994eacec5bfe9ae7774f2a573444480ba813fe
     libc_digest=05f7264da867b37f4c5ce49266b558ea1e81e05a9464f623152fca70f3550282
+    crt_digest=e7f7b45d9c5cfcf37609f0b6efd3c645272c812144703af89dfd32218fcb0fd3
     ;;
   *)
     printf 'Unsupported Android ABI: %s\n' "$abi" >&2
@@ -58,6 +60,18 @@ download "https://github.com/leanprover/lean4/releases/download/v4.19.0/$lean_pa
 checksum "$lean_digest" "$lean_archive"
 tar --zstd -xf "$lean_archive" -C "$scratch"
 lean="$scratch/$lean_package"
+if [[ "$abi" == x86_64 ]]; then
+  toolchain="$lean/bin"
+elif [[ -n ${ZETA_LEAN:-} && -x "$(dirname "$ZETA_LEAN")/clang" ]]; then
+  toolchain="$(dirname "$ZETA_LEAN")"
+else
+  host_package=lean-4.19.0-linux
+  host_archive="$cache/$host_package.tar.zst"
+  download "https://github.com/leanprover/lean4/releases/download/v4.19.0/$host_package.tar.zst" "$host_archive"
+  checksum 6fe3ce97a58f44e2b3567d455b994eacec5bfe9ae7774f2a573444480ba813fe "$host_archive"
+  tar --zstd -xf "$host_archive" -C "$scratch"
+  toolchain="$scratch/$host_package/bin"
+fi
 
 python_name="cpython-3.12.10+20250409-$python_platform-unknown-linux-gnu-install_only_stripped.tar.gz"
 python_base=https://github.com/astral-sh/python-build-standalone/releases/download/20250409
@@ -72,6 +86,12 @@ download "https://deb.debian.org/debian/pool/main/g/glibc/$(basename "$libc")" "
 checksum "$libc_digest" "$libc"
 dpkg-deb -x "$libc" "$scratch/libc"
 system_lib="$scratch/libc/lib/$triple"
+
+crt_archive="$cache/libc6-dev_2.31-13+deb11u11_$architecture.deb"
+download "https://deb.debian.org/debian/pool/main/g/glibc/$(basename "$crt_archive")" "$crt_archive"
+checksum "$crt_digest" "$crt_archive"
+dpkg-deb -x "$crt_archive" "$scratch/libcdev"
+crt="$scratch/libcdev/usr/lib/$triple"
 
 native="$scratch/inject/lib/$abi"
 runtime="$scratch/runtime"
@@ -91,9 +111,12 @@ cp "$lean"/LICENSE* "$runtime/lean/"
 cp -R "$lean"/lib/lean/{Init,Lean,Std,Init.olean,Lean.olean,Std.olean} "$runtime/lean/lib/lean/"
 find "$runtime/lean/lib/lean" -type f ! -name '*.olean' -delete
 
-cp "$python/bin/python3.12" "$native/libfarmer_python.so"
 cp "$python/lib/libpython3.12.so.1.0" "$native/libfarmer_libpython.so"
-patchelf --replace-needed '$ORIGIN/../lib/libpython3.12.so.1.0' libfarmer_libpython.so "$native/libfarmer_python.so"
+"$toolchain/clang" --target="$triple" -fPIE -Os -c "$project/tools/python-entry.c" -o "$scratch/python-entry.o"
+"$toolchain/ld.lld" -pie -z noexecstack -z max-page-size=65536 --dynamic-linker "/lib/$loader" \
+  --allow-shlib-undefined -o "$native/libfarmer_python.so" "$crt/Scrt1.o" "$crt/crti.o" "$scratch/python-entry.o" \
+  "$native/libfarmer_libpython.so" "$system_lib/libc.so.6" "$crt/libc_nonshared.a" "$crt/crtn.o"
+readelf -W -l "$native/libfarmer_python.so" | grep -E 'GNU_STACK +.* RW +0'
 cp -R "$python/lib/python3.12" "$runtime/python/lib/"
 find "$runtime/python" -type d \( -name __pycache__ -o -name site-packages \) -prune -exec rm -rf {} +
 find "$runtime/python" -type f \( -name '*.pyc' -o -name '*.a' \) -delete

@@ -83,8 +83,6 @@ jobs:
             echo "::error::Set the Android signing secrets before publishing the Windows and Android release."
             exit 1
           fi
-          sudo apt-get update
-          sudo apt-get install -y patchelf
           export ANDROID_SDK_ROOT="$RUNNER_TEMP/farmer-android-sdk"
           tools/install-android-sdk.sh "$ANDROID_SDK_ROOT"
           unzip -p tools/templates.tpz templates/android_release.apk > tools/android_release.apk
