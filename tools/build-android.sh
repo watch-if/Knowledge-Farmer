@@ -138,6 +138,7 @@ cat > "$settings/editor_settings-4.6.tres" <<SETTINGS
 [resource]
 export/android/android_sdk_path = "$sdk"
 export/android/java_sdk_path = "$java_home"
+export/android/shutdown_adb_on_exit = false
 SETTINGS
 
 version_code=${FARMER_ANDROID_VERSION_CODE:-1}

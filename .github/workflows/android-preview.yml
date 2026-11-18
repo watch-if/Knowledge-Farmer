@@ -33,9 +33,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           trap 'echo "::error title=Android setup failed::$BASH_COMMAND"' ERR
-          sdkmanager --licenses >/dev/null < <(yes)
-          sdkmanager 'build-tools;36.0.0' 'emulator' 'system-images;android-30;google_apis;x86_64'
-          avdmanager create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force <<< no
+          sdk="$RUNNER_TEMP/farmer-android-sdk"
+          tools/install-android-sdk.sh "$sdk" 'emulator' 'system-images;android-30;google_apis;x86_64'
+          export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk"
+          "$sdk/cmdline-tools/cmdline-tools/bin/avdmanager" create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force <<< no
+          printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\n' "$sdk" "$sdk" >> "$GITHUB_ENV"
+          printf '%s\n' "$sdk/platform-tools" >> "$GITHUB_PATH"
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
 
@@ -44,9 +47,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           trap 'echo "::error title=Android runtime test failed::$BASH_COMMAND"' ERR
-          adb start-server
-          "$ANDROID_HOME/emulator/emulator" -avd farmer -no-window -no-audio -no-boot-anim \
-            -no-snapshot -gpu swiftshader_indirect -no-metrics > build/android/emulator.log 2>&1 &
           export GODOT="$PWD/build/android/Godot_v4.6.3-stable_linux.x86_64"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export FARMER_ANDROID_TEMPLATE="$PWD/build/android/android_release.apk"
@@ -56,6 +56,9 @@ jobs:
           keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" -storepass:env FARMER_ANDROID_PASSWORD \
             -keyalg RSA -keysize 2048 -validity 1 -alias farmer -dname 'CN=farmer Android runtime test'
           tools/build-android.sh x86_64 build/android/smoke.apk
+          adb start-server
+          "$ANDROID_HOME/emulator/emulator" -avd farmer -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect -no-metrics > build/android/emulator.log 2>&1 &
           timeout 150 adb wait-for-device
           for attempt in {1..90}; do
             if adb shell getprop sys.boot_completed | tr -d '\r' | grep -qx 1; then break; fi

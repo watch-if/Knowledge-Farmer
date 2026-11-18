@@ -72,31 +72,57 @@ jobs:
           (cd output && zip -qr -3 ../farmer-Windows-x64.zip farmer.exe lean python 开始游戏.md LICENSE FONT-LICENSE.txt)
           unzip -tq farmer-Windows-x64.zip
 
-      - name: Publish versioned prerelease
+      - name: Build and sign Android APK
+        shell: bash
+        env:
+          FARMER_ANDROID_KEYSTORE_B64: ${{ secrets.FARMER_ANDROID_KEYSTORE_B64 }}
+          FARMER_ANDROID_PASSWORD: ${{ secrets.FARMER_ANDROID_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$FARMER_ANDROID_KEYSTORE_B64" || -z "$FARMER_ANDROID_PASSWORD" ]]; then
+            echo "::error::Set the Android signing secrets before publishing the Windows and Android release."
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+          export ANDROID_SDK_ROOT="$RUNNER_TEMP/farmer-android-sdk"
+          tools/install-android-sdk.sh "$ANDROID_SDK_ROOT"
+          unzip -p tools/templates.tpz templates/android_release.apk > tools/android_release.apk
+          export FARMER_ANDROID_TEMPLATE="$PWD/tools/android_release.apk"
+          export FARMER_ANDROID_VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))"
+          export FARMER_ANDROID_KEYSTORE="$(mktemp)"
+          trap 'rm -f "$FARMER_ANDROID_KEYSTORE"' EXIT
+          printf '%s' "$FARMER_ANDROID_KEYSTORE_B64" | base64 -d > "$FARMER_ANDROID_KEYSTORE"
+          tools/build-android.sh arm64-v8a farmer-Android-arm64.apk
+
+      - name: Publish Windows and Android together
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tag="v0.2.$GITHUB_RUN_NUMBER"
-          archive=farmer-Windows-x64.zip
+          windows=farmer-Windows-x64.zip
+          android=farmer-Android-arm64.apk
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json; then
             notes=tools/release-notes.md
             cat > "$notes" <<NOTES
-          下载 \`$archive\`，解压后运行 \`farmer.exe\`。请保留同目录的 Python 和 Lean 运行时文件夹。
+          下载 \`$windows\`，解压后运行 \`farmer.exe\`。请保留同目录的 Python 和 Lean 运行时文件夹。
+
+          Android 64 位设备安装 \`$android\`，更新时可以覆盖安装。
 
           源码提交：$GITHUB_SHA
           NOTES
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "farmer $tag · Windows 试玩版" --notes-file "$notes" --draft --prerelease
+              --title "farmer $tag · Windows / Android 试玩版" --notes-file "$notes" --draft --prerelease
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json
           fi
           jq -e --arg sha "$GITHUB_SHA" '.targetCommitish == $sha' tools/release.json > /dev/null
           if jq -e '.isDraft' tools/release.json > /dev/null; then
-            gh release upload "$tag" "$archive" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$tag" "$windows" "$android" --repo "$GITHUB_REPOSITORY" --clobber
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
-              --jq 'any(.assets[]; .name == "farmer-Windows-x64.zip" and .state == "uploaded")' | grep -qx true
+              --jq '([.assets[] | select(.state == "uploaded") | .name] as $uploaded | ($uploaded | index("farmer-Windows-x64.zip") != null and index("farmer-Android-arm64.apk") != null))' | grep -qx true
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
           fi
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets \
-            --jq '.isDraft == false and any(.assets[]; .name == "farmer-Windows-x64.zip" and .state == "uploaded")' | grep -qx true
+            --jq '.isDraft == false and ([.assets[] | select(.state == "uploaded") | .name] as $uploaded | ($uploaded | index("farmer-Windows-x64.zip") != null and index("farmer-Android-arm64.apk") != null))' | grep -qx true
