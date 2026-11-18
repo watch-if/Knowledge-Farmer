@@ -46,9 +46,11 @@ static func _execute_mobile(program: String, arguments: PackedStringArray, outpu
 	if not error.is_empty():
 		output.append(error)
 		return 1
+	var existing_library := OS.get_environment("LEAN_PATH")
+	var standard_library := installed_root.path_join("lean/lib/lean")
 	var settings := {
 		"TMPDIR": installed_root,
-		"LEAN_SYSROOT": installed_root.path_join("lean"),
+		"LEAN_PATH": standard_library if existing_library.is_empty() else existing_library + ":" + standard_library,
 		"PYTHONHOME": installed_root.path_join("python"),
 		"PYTHONNOUSERSITE": "1",
 		"FARMER_ANDROID_PYTHON_ARGV": JSON.stringify(Array(command_prefix(native_dir, "python"))),
