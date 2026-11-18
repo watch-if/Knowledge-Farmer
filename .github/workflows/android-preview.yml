@@ -28,6 +28,7 @@ jobs:
           curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_export_templates.tpz" -o build/android/templates.tpz
           unzip -qo build/android/godot.zip -d build/android
           unzip -p build/android/templates.tpz templates/android_release.apk > build/android/android_release.apk
+          rm build/android/templates.tpz build/android/godot.zip
       - name: Prepare Android SDK and check hardware acceleration
         shell: bash
         run: |
@@ -40,6 +41,8 @@ jobs:
           mkdir -p "$ANDROID_AVD_HOME"
           "$sdk/cmdline-tools/cmdline-tools/bin/avdmanager" create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force <<< no
           test -s "$ANDROID_AVD_HOME/farmer.ini"
+          sed -i '/^disk.dataPartition.size=/d' "$ANDROID_AVD_HOME/farmer.avd/config.ini"
+          printf 'disk.dataPartition.size=3G\n' >> "$ANDROID_AVD_HOME/farmer.avd/config.ini"
           printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\nANDROID_AVD_HOME=%s\n' "$sdk" "$sdk" "$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           printf '%s\n' "$sdk/platform-tools" >> "$GITHUB_PATH"
           test -c /dev/kvm
