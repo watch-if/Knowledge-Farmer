@@ -20,7 +20,9 @@ func _run() -> void:
 		await _capture("farmer-start.png")
 	_expect(menu.math_button.visible and menu.python_button.visible, "Both route buttons are visible")
 	menu.python_button.pressed.emit()
-	_expect(menu.active_route == "python", "Python button opens the Python workbench")
+	_expect(menu.tutorial != null and menu.active_workshop == null, "Fresh Python entry starts the beginner tutorial")
+	await _complete_tutorial(menu.tutorial, "python")
+	_expect(menu.active_route == "python", "Completing the tutorial opens the Python workbench")
 	var track = menu.active_workshop
 	track.check_button.pressed.emit()
 	await _wait_for_check(track)
@@ -35,7 +37,11 @@ Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"An
 	var second_case: Dictionary = PythonRunner.check(canned, PythonCourse.LESSONS[0])
 	_expect(not second_case.ok and second_case.output.contains("2/2"), "Result hardcoded for one dataset fails the second")
 	for index in PythonCourse.LESSONS.size():
-		track.editor.text = PythonCourse.LESSONS[index].solution
+		if index == 0:
+			track.editor.text = track.editor.text.replace('"name": row["name"],', '"name": row["name"].strip(),')
+			track.editor.text = track.editor.text.replace('"price": row["price"],', '"price": format(Decimal(row["price"]), ".2f"),')
+		else:
+			track.editor.text = PythonCourse.LESSONS[index].solution
 		track.check_button.pressed.emit()
 		await _wait_for_check(track)
 		_expect(not track.completed.has(index) and not track.ship_button.disabled, "Accepted script loads a shipment before clearing the level")
@@ -58,16 +64,47 @@ Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"An
 	track.home_button.pressed.emit()
 	_expect(menu.active_route.is_empty(), "Python workbench returns to menu")
 	menu.math_button.pressed.emit()
+	_expect(menu.tutorial != null, "Fresh Math entry starts a distinct Lean tutorial")
+	await _complete_tutorial(menu.tutorial, "math")
 	_expect(menu.active_route == "math" and menu.active_workshop.editors.has("Equation"), "Math opens the existing Lean editor")
 	menu.active_workshop.return_button.pressed.emit()
 	_expect(menu.active_route.is_empty(), "Math workbench returns to menu")
 	menu.python_button.pressed.emit()
+	_expect(menu.tutorial == null, "Returning players can go directly to the workshop")
 	track = menu.active_workshop
 	_expect(track.stage == 1 and track.completed.size() == 2, "Python progress survives switching tracks")
 	_expect(track.editor.text == PythonCourse.LESSONS[1].solution, "Python source draft is restored")
+	track.home_button.pressed.emit()
+	menu.python_tutorial_button.pressed.emit()
+	_expect(menu.tutorial != null and menu.tutorial.step == 0, "Tutorial can be reopened from the menu")
+	menu.tutorial.return_button.pressed.emit()
+	_expect(menu.tutorial == null and menu.active_workshop == null, "Cancel returns to route selection")
+	change_scene_to_packed(Menu)
+	await scene_changed
+	menu = current_scene
+	menu.math_button.pressed.emit()
+	_expect(menu.active_route == "math" and menu.tutorial == null, "Completed tutorial stays dismissed after reloading the menu")
 	if failures == 0:
 		print("%d farmer route checks passed" % checks)
 	quit(0 if failures == 0 else 1)
+
+func _complete_tutorial(guide: Control, route: String) -> void:
+	_expect(guide.advance_button.disabled, "Tutorial waits for a real check")
+	if OS.has_environment("FARMER_CAPTURE"):
+		await _capture("farmer-tutorial-" + route + ".png")
+	guide.run_button.pressed.emit()
+	await _wait_for_check(guide)
+	_expect(not guide.advance_button.disabled, "Prefilled example runs in the real runtime")
+	guide.advance_button.pressed.emit()
+	_expect(guide.step == 1 and guide.advance_button.disabled, "Second step requires another check")
+	guide.run_button.pressed.emit()
+	await _wait_for_check(guide)
+	_expect(guide.advance_button.disabled, "Unchanged program does not pass the edit step")
+	guide.editor.text = 'print("开始备货")' if route == "python" else "theorem firstProof : (3 : Nat) = 3 := by\n  rfl"
+	guide.run_button.pressed.emit()
+	await _wait_for_check(guide)
+	_expect(not guide.advance_button.disabled, "Changing one part passes the tutorial")
+	guide.advance_button.pressed.emit()
 
 func _capture(filename: String) -> void:
 	await RenderingServer.frame_post_draw

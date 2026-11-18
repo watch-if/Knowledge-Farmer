@@ -2,6 +2,12 @@
 
 farmer 是一款原生中文桌面学习游戏。启动后选择 **Python** 或 **Math**，随时可返回选路。两条路线各自保存进度。
 
+## 第一次玩
+
+首次选择路线时会进入两步教程。先运行已经写好的示例，再动手改一个地方。Python 用 `print` 显示一句话。Math 用 `rfl` 检查等式两边是否是同一个值。开始界面下方的教程按钮可随时重新练习。
+
+进入工坊后，Python 从修改 `name` 和 `price` 两项开始，按 `i` 看输入和预期输出。Math 第一关把第二行的 `sorry` 改成 `rfl`，再点「检查 Lean」。
+
 ## Python · 发货车间
 
 用一个项目练文件自动化与简单采集。先把供应商给的 CSV 清成统一格式，再用 Python 向本机练习网页发出 HTTP 请求，把网页商品数据写成同格式的报表。每关在两批数据上运行脚本，给出真实错误或报表预览。
@@ -39,3 +45,7 @@ godot --headless --path . --script tests/workshop_check.gd
 XDG_DATA_HOME="$(mktemp -d)" godot --headless --path . --script tests/workshop_flow.gd
 XDG_DATA_HOME="$(mktemp -d)" godot --headless --path . --script tests/farmer_routes.gd
 ```
+
+## GitHub 自动发布
+
+每次推送到 `main` 后，GitHub Actions 会运行两条路线的测试，构建 Windows x64 试玩包，并在 Releases 发布带两个运行时的 `farmer-Windows-x64.zip`。预发行版本号从 `v0.2.1` 起随工作流编号递增。

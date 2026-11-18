@@ -10,7 +10,22 @@ static func executable() -> String:
 		return bundled
 	return "python" if windows else "python3"
 
+static func check_warmup(source: String, step: int) -> Dictionary:
+	var lesson_id := "warmup_print" if step == 0 else "warmup_edit"
+	return _run_grader(source, {"id": lesson_id, "file": "warmup.py"})
+
 static func check(source: String, lesson: Dictionary) -> Dictionary:
+	var result := _run_grader(source, lesson)
+	if not result.ok:
+		return result
+	var message: String = result.output
+	var separator := message.rfind("\n")
+	var boxes: Variant = JSON.parse_string(message.substr(separator + 1))
+	if not boxes is Array or boxes.is_empty():
+		return {"ok": false, "output": "脚本通过，但工坊没有收到发货清单。"}
+	return {"ok": true, "output": message.substr(0, separator).strip_edges(), "boxes": boxes}
+
+static func _run_grader(source: String, lesson: Dictionary) -> Dictionary:
 	var path := ProjectSettings.globalize_path("user://python_runtime/%d" % OS.get_process_id())
 	if DirAccess.make_dir_recursive_absolute(path) != OK:
 		return {"ok": false, "output": "无法建立本地 Python 工作目录。"}
@@ -24,13 +39,7 @@ static func check(source: String, lesson: Dictionary) -> Dictionary:
 	if status == -1:
 		return {"ok": false, "output": "无法启动 Python。请安装 Python 3，或设置 FARMER_PYTHON。"}
 	var message := String(output[0]).strip_edges() if not output.is_empty() else ""
-	if status != 0:
-		return {"ok": false, "output": message}
-	var separator := message.rfind("\n")
-	var boxes: Variant = JSON.parse_string(message.substr(separator + 1))
-	if not boxes is Array or boxes.is_empty():
-		return {"ok": false, "output": "脚本通过，但工坊没有收到发货清单。"}
-	return {"ok": true, "output": message.substr(0, separator).strip_edges(), "boxes": boxes}
+	return {"ok": status == 0, "output": message}
 
 static func _write(path: String, value: String) -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)

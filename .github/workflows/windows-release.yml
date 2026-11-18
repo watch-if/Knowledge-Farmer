@@ -1,0 +1,102 @@
+name: Windows prerelease
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tools output
+          touch tools/.gdignore output/.gdignore
+          godot_base=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable
+          curl -fSL --retry 3 "$godot_base/Godot_v4.6.3-stable_linux.x86_64.zip" -o tools/godot.zip
+          unzip -q tools/godot.zip -d tools
+          curl -fSL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.19.0/lean-4.19.0-linux.tar.zst -o tools/lean-linux.tar.zst
+          tar --zstd -xf tools/lean-linux.tar.zst -C tools
+          printf 'GODOT=%s\nZETA_LEAN=%s\nFARMER_PYTHON=%s\n' \
+            "$PWD/tools/Godot_v4.6.3-stable_linux.x86_64" \
+            "$PWD/tools/lean-4.19.0-linux/bin/lean" \
+            "$(command -v python3)" >> "$GITHUB_ENV"
+
+      - name: Verify Python and Lean gameplay
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT" --headless --editor --import --path . --quit
+          XDG_DATA_HOME="$(mktemp -d)" timeout 90 "$GODOT" --headless --path . --script tests/farmer_routes.gd
+          XDG_DATA_HOME="$(mktemp -d)" timeout 90 "$GODOT" --headless --path . --script tests/workshop_check.gd
+          XDG_DATA_HOME="$(mktemp -d)" timeout 90 "$GODOT" --headless --path . --script tests/workshop_flow.gd
+
+      - name: Package Windows app and both runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot_base=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable
+          templates="$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          mkdir -p "$templates" output/lean/bin output/lean/lib/lean output/python
+          curl -fSL --retry 3 "$godot_base/Godot_v4.6.3-stable_export_templates.tpz" -o tools/templates.tpz
+          unzip -p tools/templates.tpz templates/windows_release_x86_64.exe > "$templates/windows_release_x86_64.exe"
+          "$GODOT" --headless --path . --export-release 'Windows 64' "$PWD/output/farmer.exe"
+
+          curl -fSL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.19.0/lean-4.19.0-windows.zip -o tools/lean.zip
+          unzip -q tools/lean.zip '*/bin/lean.exe' '*/bin/*shared*.dll' '*/lib/lean/*.olean' '*/LICENSE*' -d tools
+          lean=tools/lean-4.19.0-windows
+          cp "$lean"/bin/{lean.exe,libInit_shared.dll,libleanshared.dll,libleanshared_1.dll} output/lean/bin/
+          cp "$lean"/LICENSE* output/lean/
+          cp -R "$lean"/lib/lean/{Init,Lean,Std,Init.olean,Lean.olean,Std.olean} output/lean/lib/lean/
+
+          curl -fSL --retry 3 https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg -o tools/python.nupkg
+          unzip -q tools/python.nupkg 'tools/python*.exe' 'tools/python*.dll' 'tools/vcruntime*.dll' 'tools/DLLs/*' 'tools/Lib/*' 'tools/LICENSE.txt' -d tools/python
+          cp -a tools/python/tools/. output/python/
+
+          test "$(tail -c 4 output/farmer.exe)" = GDPC
+          test -s output/lean/lib/lean/Init.olean
+          test -s output/python/python.exe
+          test -s output/python/Lib/http/server.py
+          cp README.md output/开始游戏.md
+          cp LICENSE assets/FONT-LICENSE.txt output/
+          (cd output && zip -qr -3 ../farmer-Windows-x64.zip farmer.exe lean python 开始游戏.md LICENSE FONT-LICENSE.txt)
+          unzip -tq farmer-Windows-x64.zip
+
+      - name: Publish versioned prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v0.2.$GITHUB_RUN_NUMBER"
+          archive=farmer-Windows-x64.zip
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json; then
+            notes=tools/release-notes.md
+            cat > "$notes" <<NOTES
+          下载 \`$archive\`，解压后运行 \`farmer.exe\`。请保留同目录的 Python 和 Lean 运行时文件夹。
+
+          源码提交：$GITHUB_SHA
+          NOTES
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "farmer $tag · Windows 试玩版" --notes-file "$notes" --draft --prerelease
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json
+          fi
+          jq -e --arg sha "$GITHUB_SHA" '.targetCommitish == $sha' tools/release.json > /dev/null
+          if jq -e '.isDraft' tools/release.json > /dev/null; then
+            gh release upload "$tag" "$archive" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
+              --jq 'any(.assets[]; .name == "farmer-Windows-x64.zip" and .state == "uploaded")' | grep -qx true
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets \
+            --jq '.isDraft == false and any(.assets[]; .name == "farmer-Windows-x64.zip" and .state == "uploaded")' | grep -qx true

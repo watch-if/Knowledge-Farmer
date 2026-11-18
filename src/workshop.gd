@@ -150,7 +150,10 @@ func _refresh() -> void:
 	if current_file.is_empty():
 		current_file = file
 	screen_goal.text = lesson.title
-	current_status("打开任务提示 i，或编辑 %s.lean 后检查。" % file)
+	if stage == 0 and not archives.has(file):
+		current_status("第 1 步：把第二行的 sorry 改成 rfl，再点「检查 Lean」。")
+	else:
+		current_status("打开任务提示 i，或编辑 %s.lean 后检查。" % file)
 	_update_progress()
 	_render_files()
 	_prepare_machine()
@@ -285,7 +288,7 @@ func _select_file(filename: String, panel: Control) -> void:
 	panel.move_to_front()
 
 func _remember_caret(filename: String, editor: CodeEdit) -> void:
-	if editors.get(filename) != editor:
+	if editors.get(filename) != editor or not save_timer.is_inside_tree():
 		return
 	carets[filename] = Vector2i(editor.get_caret_line(), editor.get_caret_column())
 	save_timer.start()

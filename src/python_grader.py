@@ -58,7 +58,7 @@ def write_data(lesson, folder, rows):
     (folder / "catalog.html").write_text("\n".join(table), encoding="utf-8")
 
 
-def run_script(script, folder, *arguments):
+def execute_script(script, folder, *arguments):
     try:
         result = subprocess.run(
             [sys.executable, "-X", "utf8", str(script), *arguments],
@@ -69,19 +69,19 @@ def run_script(script, folder, *arguments):
             timeout=7,
         )
     except subprocess.TimeoutExpired:
-        return "脚本超过 7 秒还未结束，请检查是否有循环或网络请求未完成。"
+        return "脚本超过 7 秒还未结束，请检查是否有循环或网络请求未完成。", ""
     if result.returncode:
-        return (result.stderr or result.stdout or "脚本退出时返回错误。")[-1800:]
-    return ""
+        return (result.stderr or result.stdout or "脚本退出时返回错误。")[-1800:], ""
+    return "", result.stdout
 
 
 def grade_case(lesson, script, rows, folder):
     write_data(lesson, folder, rows)
     if lesson == "catalog":
         with catalog_url(folder) as url:
-            error = run_script(script, folder, url)
+            error, _ = execute_script(script, folder, url)
     else:
-        error = run_script(script, folder)
+        error, _ = execute_script(script, folder)
     if error:
         return error
     report = folder / "report.csv"
@@ -105,9 +105,28 @@ def grade_case(lesson, script, rows, folder):
     return ""
 
 
+def grade_warmup(lesson, filename):
+    expected = {
+        "warmup_print": "准备装车",
+        "warmup_edit": "开始备货",
+    }[lesson]
+    with tempfile.TemporaryDirectory(prefix="farmer-warmup-") as temporary:
+        error, output = execute_script(Path(filename).resolve(), temporary)
+    if error:
+        print(error)
+        return 1
+    if output.strip() != expected:
+        print(f"这次输出：{output.strip() or '（空）'}\n目标输出：{expected}")
+        return 1
+    print(output.strip())
+    return 0
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     lesson, filename = sys.argv[1:]
+    if lesson in {"warmup_print", "warmup_edit"}:
+        return grade_warmup(lesson, filename)
     if lesson not in {"clean", "catalog"}:
         return 1
     with tempfile.TemporaryDirectory(prefix="farmer-quotes-") as temporary:

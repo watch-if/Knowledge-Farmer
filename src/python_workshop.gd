@@ -172,7 +172,7 @@ func _refresh() -> void:
 	hint_page = -1
 	hint.text = ""
 	status.text = "脚本通过验收后，把零件箱装进货车。"
-	cargo.text = "现在可以编辑脚本，或打开订单看货箱要求。"
+	cargo.text = "第 1 步：打开 i 看样例，再找代码里的 name 和 price 两行。" if stage == 0 and not completed.has(0) else "打开 i 看订单，或修改脚本后运行。"
 	_clear_freight()
 	_update_controls()
 	_show_editor()

@@ -3,15 +3,22 @@ extends Control
 const Style = preload("res://src/workshop_style.gd")
 const MathWorkshop = preload("res://main.tscn")
 const PythonWorkshop = preload("res://src/python_workshop.gd")
+const Tutorial = preload("res://src/route_tutorial.gd")
+const TUTORIAL_SAVE := "user://route_tutorials.cfg"
 
 var route_menu: Control
 var math_button: Button
 var python_button: Button
+var python_tutorial_button: Button
+var math_tutorial_button: Button
+var tutorial: Control
+var tutorial_progress := ConfigFile.new()
 var active_workshop: Control
 var active_route := ""
 
 func _ready() -> void:
 	theme = Style.make()
+	tutorial_progress.load(TUTORIAL_SAVE)
 	route_menu = Control.new()
 	route_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(route_menu)
@@ -25,7 +32,7 @@ func _ready() -> void:
 
 	var plaque := Panel.new()
 	plaque.position = Vector2(413, 196)
-	plaque.size = Vector2(614, 385)
+	plaque.size = Vector2(614, 405)
 	plaque.add_theme_stylebox_override("panel", Style.box(Color("#261810ee"), Color("#aa743f"), 15, 0))
 	route_menu.add_child(plaque)
 
@@ -39,6 +46,8 @@ func _ready() -> void:
 
 	python_button = _route_button(plaque, "Python", "发货车间", Vector2(38, 171), "python")
 	math_button = _route_button(plaque, "Math", "Lean 4 证明工坊", Vector2(324, 171), "math")
+	python_tutorial_button = _tutorial_button(plaque, "Python 教程", Vector2(77, 346), "python")
+	math_tutorial_button = _tutorial_button(plaque, "Math 教程", Vector2(363, 346), "math")
 	python_button.grab_focus()
 
 func _route_button(panel: Panel, name: String, description: String, at: Vector2, route: String) -> Button:
@@ -65,8 +74,52 @@ func _route_button(panel: Panel, name: String, description: String, at: Vector2,
 	button.add_child(caption)
 	return button
 
+func _tutorial_button(panel: Panel, caption: String, at: Vector2, route: String) -> Button:
+	var button := Button.new()
+	button.text = caption
+	button.position = at
+	button.size = Vector2(174, 36)
+	button.pressed.connect(_show_tutorial.bind(route))
+	panel.add_child(button)
+	return button
+
 func _enter(route: String) -> void:
-	if not active_route.is_empty():
+	if tutorial_progress.get_value("seen", route, false):
+		_open_workshop(route)
+	else:
+		_show_tutorial(route)
+
+func _show_tutorial(route: String) -> void:
+	if tutorial != null or not active_route.is_empty():
+		return
+	for button in [python_button, math_button, python_tutorial_button, math_tutorial_button]:
+		button.disabled = true
+	tutorial = Tutorial.new()
+	tutorial.route = route
+	tutorial.enter_workshop.connect(_finish_tutorial.bind(route))
+	tutorial.return_to_menu.connect(_close_tutorial.bind(route))
+	add_child(tutorial)
+	tutorial.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+func _finish_tutorial(route: String) -> void:
+	tutorial_progress.set_value("seen", route, true)
+	tutorial_progress.save(TUTORIAL_SAVE)
+	_close_tutorial(route)
+	_open_workshop(route)
+
+func _close_tutorial(route: String) -> void:
+	if tutorial == null:
+		return
+	tutorial.hide()
+	tutorial.queue_free()
+	tutorial = null
+	for button in [python_button, math_button, python_tutorial_button, math_tutorial_button]:
+		button.disabled = false
+	var focus := math_button if route == "math" else python_button
+	focus.grab_focus()
+
+func _open_workshop(route: String) -> void:
+	if tutorial != null or not active_route.is_empty():
 		return
 	route_menu.hide()
 	active_route = route
