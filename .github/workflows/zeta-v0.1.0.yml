@@ -1,0 +1,51 @@
+name: Package Zeta Lab v0.1.0
+on:
+  push:
+    branches: [release/zeta-v0.1.0]
+permissions:
+  contents: write
+concurrency: zeta-v0.1.0-release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 8aaf14cc186816ef462ae47596eaf19798cb4274
+      - name: Build and check Windows package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output/lean/bin output/lean/lib/lean tools
+          godot_base=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable
+          curl -fSL --retry 3 "$godot_base/Godot_v4.6.3-stable_linux.x86_64.zip" -o tools/godot.zip
+          curl -fSL --retry 3 "$godot_base/Godot_v4.6.3-stable_export_templates.tpz" -o tools/templates.tpz
+          unzip -q tools/godot.zip -d tools
+          godot="$PWD/tools/Godot_v4.6.3-stable_linux.x86_64"
+          templates="$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          mkdir -p "$templates"
+          unzip -p tools/templates.tpz templates/windows_release_x86_64.exe > "$templates/windows_release_x86_64.exe"
+          touch tools/.gdignore output/.gdignore
+          "$godot" --headless --path . --export-release 'Windows 64' "$PWD/output/ZetaLab.exe"
+          curl -fSL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.19.0/lean-4.19.0-windows.zip -o tools/lean.zip
+          unzip -q tools/lean.zip '*/bin/lean.exe' '*/bin/*shared*.dll' '*/lib/lean/*.olean' '*/LICENSE*' -d tools
+          lean=tools/lean-4.19.0-windows
+          cp "$lean"/bin/{lean.exe,libInit_shared.dll,libleanshared.dll,libleanshared_1.dll} output/lean/bin/
+          cp "$lean"/LICENSE* output/lean/
+          cp -R "$lean"/lib/lean/{Init,Lean,Std,Init.olean,Lean.olean,Std.olean} output/lean/lib/lean/
+          cp README.md output/开始游戏.md
+          cp LICENSE assets/FONT-LICENSE.txt output/
+          test "$(tail -c 4 output/ZetaLab.exe)" = GDPC
+          (cd output && zip -qr -3 ../ZetaLab-Windows-x64.zip ZetaLab.exe lean 开始游戏.md LICENSE FONT-LICENSE.txt)
+          unzip -tq ZetaLab-Windows-x64.zip
+      - name: Attach and publish existing prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft | grep -qx true
+          gh release upload v0.1.0 ZetaLab-Windows-x64.zip --repo "$GITHUB_REPOSITORY"
+          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx ZetaLab-Windows-x64.zip
+          gh release edit v0.1.0 --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
