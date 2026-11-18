@@ -1,0 +1,106 @@
+name: Android runtime verification
+
+on:
+  push:
+    branches: [android/preview]
+
+permissions:
+  contents: read
+
+jobs:
+  android-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare Godot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/android
+          base=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable
+          curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_linux.x86_64.zip" -o build/android/godot.zip
+          curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_export_templates.tpz" -o build/android/templates.tpz
+          unzip -qo build/android/godot.zip -d build/android
+          unzip -p build/android/templates.tpz templates/android_release.apk > build/android/android_release.apk
+          rm build/android/templates.tpz build/android/godot.zip
+      - name: Prepare Android SDK and check hardware acceleration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'echo "::error title=Android setup failed::$BASH_COMMAND"' ERR
+          sdk="$RUNNER_TEMP/farmer-android-sdk"
+          tools/install-android-sdk.sh "$sdk" 'emulator' 'system-images;android-30;google_apis;x86_64'
+          export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/farmer-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          "$sdk/cmdline-tools/cmdline-tools/bin/avdmanager" create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force <<< no
+          test -s "$ANDROID_AVD_HOME/farmer.ini"
+          sed -i '/^disk.dataPartition.size=/d' "$ANDROID_AVD_HOME/farmer.avd/config.ini"
+          printf 'disk.dataPartition.size=3G\n' >> "$ANDROID_AVD_HOME/farmer.avd/config.ini"
+          printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\nANDROID_AVD_HOME=%s\n' "$sdk" "$sdk" "$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          printf '%s\n' "$sdk/platform-tools" >> "$GITHUB_PATH"
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+
+      - name: Run offline Python and Lean inside Android
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'echo "::error title=Android runtime test failed::$BASH_COMMAND"' ERR
+          export GODOT="$PWD/build/android/Godot_v4.6.3-stable_linux.x86_64"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export FARMER_ANDROID_TEMPLATE="$PWD/build/android/android_release.apk"
+          export FARMER_ANDROID_KEYSTORE="$PWD/build/android/smoke.keystore"
+          export FARMER_ANDROID_PASSWORD=testingonly
+          export FARMER_ANDROID_SMOKE=1
+          keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" -storepass:env FARMER_ANDROID_PASSWORD \
+            -keyalg RSA -keysize 2048 -validity 1 -alias farmer -dname 'CN=farmer Android runtime test'
+          tools/build-android.sh x86_64 build/android/smoke.apk
+          rm -rf build/android-downloads
+          rm build/android/android_release.apk
+          adb start-server
+          emulator="$ANDROID_HOME/emulator/emulator"
+          "$emulator" -accel-check | tee build/android/accel.log
+          "$emulator" -avd farmer -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect -feature -Vulkan -no-metrics -memory 2048 -cores 2 \
+            -accel on -partition-size 3072 -port 5570 > build/android/emulator.log 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          device=emulator-5570
+          booted=false
+          for attempt in {1..90}; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then break; fi
+            if adb -s "$device" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1; then
+              booted=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != true ]]; then
+            awk '/ERROR|FATAL/ { print }' build/android/emulator.log | tail -5 | while IFS= read -r line; do
+              echo "::error title=Emulator startup::$line"
+            done
+            printf '::error title=Emulator diagnostic::%s\n' "$(tail -18 build/android/emulator.log | paste -sd '|' -)"
+            exit 1
+          fi
+          adb -s "$device" install --streaming -r build/android/smoke.apk
+          adb -s "$device" shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
+          for attempt in {1..120}; do
+            adb -s "$device" logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
+            if detail=$(grep -F 'FARMER_ANDROID_FAIL' build/android/device.log); then
+              echo "::error title=Offline engine failure::$detail"
+              paths=$(adb -s "$device" shell dumpsys package org.watchif.farmer | grep -Ei 'nativeLibrary|primaryCpuAbi|legacyNativeLibrary|extractNative' | tr -d '\r' | paste -sd '|' - || true)
+              echo "::error title=Android native library layout::$paths"
+              exit 1
+            fi
+            if grep -F 'FARMER_ANDROID_OK' build/android/device.log; then exit 0; fi
+            sleep 2
+          done
+          tail -10 build/android/device.log | while IFS= read -r line; do
+            echo "::error title=No Android smoke result::$line"
+          done
+          exit 1

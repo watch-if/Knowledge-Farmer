@@ -1,5 +1,7 @@
 extends RefCounted
 
+const Runtime = preload("res://src/android_runtime.gd")
+
 static func executable() -> String:
 	var configured := OS.get_environment("FARMER_PYTHON").strip_edges()
 	if not configured.is_empty():
@@ -26,16 +28,17 @@ static func check(source: String, lesson: Dictionary) -> Dictionary:
 	return {"ok": true, "output": message.substr(0, separator).strip_edges(), "boxes": boxes}
 
 static func _run_grader(source: String, lesson: Dictionary) -> Dictionary:
-	var path := ProjectSettings.globalize_path("user://python_runtime/%d" % OS.get_process_id())
-	if DirAccess.make_dir_recursive_absolute(path) != OK:
-		return {"ok": false, "output": "无法建立本地 Python 工作目录。"}
+	var path := Runtime.local_path("python_runtime/%d" % OS.get_process_id())
+	var directory_error := DirAccess.make_dir_recursive_absolute(path)
+	if directory_error != OK:
+		return {"ok": false, "output": "无法建立本地 Python 工作目录（%s）：%s" % [error_string(directory_error), path]}
 	var grader_path := path.path_join("grader.py")
 	var player_path: String = path.path_join(lesson.file)
 	var grader_source := FileAccess.get_file_as_string("res://src/python_grader.py")
 	if grader_source.is_empty() or not _write(grader_path, grader_source) or not _write(player_path, source):
 		return {"ok": false, "output": "无法准备练习脚本。"}
 	var output: Array = []
-	var status := OS.execute(executable(), ["-X", "utf8", grader_path, lesson.id, player_path], output, true)
+	var status := Runtime.execute("python", executable(), ["-X", "utf8", grader_path, lesson.id, player_path], output)
 	if status == -1:
 		return {"ok": false, "output": "无法启动 Python。请安装 Python 3，或设置 FARMER_PYTHON。"}
 	var message := String(output[0]).strip_edges() if not output.is_empty() else ""

@@ -1,5 +1,7 @@
 extends RefCounted
 
+const Runtime = preload("res://src/android_runtime.gd")
+
 const STANDARD_AXIOMS := ["propext", "Classical.choice", "Quot.sound"]
 static var mutex := Mutex.new()
 
@@ -20,7 +22,7 @@ static func check(executable: String, source: String, lesson: Dictionary, librar
 	return result
 
 static func _check(executable: String, source: String, lesson: Dictionary, library: Dictionary) -> Dictionary:
-	var dir := ProjectSettings.globalize_path("user://lean_runtime/%d" % OS.get_process_id())
+	var dir := Runtime.local_path("lean_runtime/%d" % OS.get_process_id())
 	if DirAccess.make_dir_recursive_absolute(dir) != OK:
 		return {"ok": false, "output": "无法创建本地 Lean 工作目录。"}
 	var former := OS.get_environment("LEAN_PATH")
@@ -91,7 +93,7 @@ static func _compile_imports(executable: String, dir: String, source: String, mo
 
 static func _execute(executable: String, arguments: PackedStringArray) -> Dictionary:
 	var output: Array = []
-	var status := OS.execute(executable, arguments, output, true)
+	var status := Runtime.execute("lean", executable, arguments, output)
 	if status == -1:
 		return {"ok": false, "output": "无法启动 Lean 4。请设置 ZETA_LEAN，或使用含 Lean 的 Windows 试玩包。"}
 	var message := String(output[0]) if not output.is_empty() else ""
