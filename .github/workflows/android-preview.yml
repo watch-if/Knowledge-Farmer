@@ -62,12 +62,14 @@ jobs:
           keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" -storepass:env FARMER_ANDROID_PASSWORD \
             -keyalg RSA -keysize 2048 -validity 1 -alias farmer -dname 'CN=farmer Android runtime test'
           tools/build-android.sh x86_64 build/android/smoke.apk
+          rm -rf build/android-downloads
+          rm build/android/android_release.apk
           adb start-server
           emulator="$ANDROID_HOME/emulator/emulator"
           "$emulator" -accel-check | tee build/android/accel.log
           "$emulator" -avd farmer -no-window -no-audio -no-boot-anim \
             -no-snapshot -gpu swiftshader_indirect -feature -Vulkan -no-metrics -memory 2048 -cores 2 \
-            -accel on -port 5570 > build/android/emulator.log 2>&1 &
+            -accel on -partition-size 3072 -port 5570 > build/android/emulator.log 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
           device=emulator-5570
