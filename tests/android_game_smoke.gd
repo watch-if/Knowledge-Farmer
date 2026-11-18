@@ -1,5 +1,6 @@
 extends Node
 
+const Runtime = preload("res://src/android_runtime.gd")
 const MathCourse = preload("res://src/course.gd")
 const PythonCourse = preload("res://src/python_course.gd")
 const LeanChecker = preload("res://src/lean_checker.gd")
@@ -8,6 +9,7 @@ const PythonRunner = preload("res://src/python_runner.gd")
 var worker: Thread
 
 func _ready() -> void:
+	Runtime.configure()
 	print("FARMER_ANDROID_START")
 	worker = Thread.new()
 	worker.start(_exercise)

@@ -1,5 +1,6 @@
 extends Control
 
+const Runtime = preload("res://src/android_runtime.gd")
 const Style = preload("res://src/workshop_style.gd")
 const MathWorkshop = preload("res://main.tscn")
 const PythonWorkshop = preload("res://src/python_workshop.gd")
@@ -17,6 +18,7 @@ var active_workshop: Control
 var active_route := ""
 
 func _ready() -> void:
+	Runtime.configure()
 	theme = Style.make()
 	tutorial_progress.load(TUTORIAL_SAVE)
 	route_menu = Control.new()

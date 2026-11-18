@@ -6,6 +6,27 @@ const GLIBC_LIBS := ["c", "m", "dl", "pthread", "rt", "util"]
 
 static var runtime_lock := Mutex.new()
 static var installed_root := ""
+static var native_dir := ""
+static var android_apk_path := ""
+
+static func configure() -> void:
+	if OS.get_name() != "Android" or not Engine.has_singleton("AndroidRuntime"):
+		return
+	var android: Object = Engine.get_singleton("AndroidRuntime")
+	var context: Object = android.getApplicationContext()
+	if context == null:
+		return
+	android_apk_path = String(context.getPackageCodePath())
+	for directory in apk_library_candidates(android_apk_path):
+		if FileAccess.file_exists(directory.path_join("libfarmer_loader.so")):
+			native_dir = directory
+			return
+
+static func apk_library_candidates(apk_path: String) -> PackedStringArray:
+	if not apk_path.is_absolute_path():
+		return []
+	var root := apk_path.get_base_dir().path_join("lib")
+	return PackedStringArray([root.path_join("arm64"), root.path_join("x86_64")])
 
 static func execute(program: String, desktop_executable: String, arguments: PackedStringArray, output: Array) -> int:
 	if OS.get_name() != "Android":
@@ -38,9 +59,10 @@ static func command_prefix(native_dir: String, program: String) -> PackedStringA
 	])
 
 static func _execute_mobile(program: String, arguments: PackedStringArray, output: Array) -> int:
-	var native_dir := _native_directory()
 	if native_dir.is_empty():
-		output.append("无法找到 APK 内的运行时目录。请使用完整的 farmer Android 安装包。")
+		native_dir = _native_directory()
+	if native_dir.is_empty():
+		output.append("无法找到 APK 内的运行时目录。安装路径：" + android_apk_path)
 		return 1
 	var error := _install_data()
 	if not error.is_empty():

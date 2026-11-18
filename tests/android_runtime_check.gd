@@ -8,6 +8,8 @@ func _initialize() -> void:
 003000-004000 r-xp 0 00:01 22 /data/app/pkg/lib/arm64/libc++_shared.so
 """
 	assert(Runtime.native_directory_from_maps(map) == "/data/app/pkg/lib/arm64")
+	assert(Runtime.apk_library_candidates("/data/app/pkg/base.apk") == PackedStringArray(["/data/app/pkg/lib/arm64", "/data/app/pkg/lib/x86_64"]))
+	assert(Runtime.apk_library_candidates("").is_empty())
 	assert(Runtime.safe_asset_path("lean/lib/lean/Init.olean"))
 	assert(Runtime.safe_asset_path("python/lib/python3.12/csv.py"))
 	for invalid in ["../temp.py", "lean/../../outside", "/lean/lib", "python/lib/../tmp", "outside.csv", "lean\\..\\tmp"]:
