@@ -1,0 +1,71 @@
+name: Build Android installation preview
+
+on:
+  push:
+    branches: [android/download-preview]
+
+permissions:
+  contents: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build and sign ARM64 APK
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'echo "::error title=Preview build failed::$BASH_COMMAND"' ERR
+          mkdir -p build/android
+          base=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable
+          curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_linux.x86_64.zip" -o build/android/godot.zip
+          curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_export_templates.tpz" -o build/android/templates.tpz
+          unzip -qo build/android/godot.zip -d build/android
+          unzip -p build/android/templates.tpz templates/android_release.apk > build/android/android_release.apk
+          rm build/android/templates.tpz build/android/godot.zip
+          export ANDROID_SDK_ROOT="$RUNNER_TEMP/farmer-android-sdk"
+          tools/install-android-sdk.sh "$ANDROID_SDK_ROOT"
+          export GODOT="$PWD/build/android/Godot_v4.6.3-stable_linux.x86_64"
+          export FARMER_ANDROID_TEMPLATE="$PWD/build/android/android_release.apk"
+          export FARMER_ANDROID_KEYSTORE="$RUNNER_TEMP/farmer-test-key.p12"
+          export FARMER_ANDROID_PASSWORD="$(openssl rand -hex 24)"
+          trap 'rm -f "$FARMER_ANDROID_KEYSTORE"' EXIT
+          keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" \
+            -storepass:env FARMER_ANDROID_PASSWORD -keyalg RSA -keysize 3072 -alias farmer \
+            -validity 3650 -dname 'CN=farmer installation preview'
+          sed -i 's/package\/unique_name="org.watchif.farmer"/package\/unique_name="org.watchif.farmer.preview"/;s/package\/name="farmer"/package\/name="farmer 试装版"/' export_presets.cfg
+          tools/build-android.sh arm64-v8a farmer-Android-arm64-preview.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump xmltree farmer-Android-arm64-preview.apk --file AndroidManifest.xml |
+            grep -F 'package="org.watchif.farmer.preview"'
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 4 farmer-Android-arm64-preview.apk
+
+      - name: Publish installation preview
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=android-preview-1
+          archive=farmer-Android-arm64-preview.apk
+          cat > build/android/release-notes.md <<'NOTES'
+          这是 ARM64（64 位）Android 手机的试装包。下载 APK 后直接打开安装。
+
+          APK 已通过签名和文件完整性检查。现有 Android 模拟器测试在启动 Python 解释器时出现 `Bad system call`。Android 真机上的 Python 和 Lean 关卡仍待验证。
+
+          试装版使用独立的应用 ID 和测试签名，存档保存在试装版内。Windows 正式联发计划等待安卓关卡验证和长期 APK 签名配置。
+          NOTES
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title 'farmer · Android ARM64 试装版 1' --notes-file build/android/release-notes.md \
+              --draft --prerelease
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft | grep -qx true
+          gh release upload "$tag" "$archive" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq 'any(.assets[]; .name == "farmer-Android-arm64-preview.apk" and .state == "uploaded")' | grep -qx true
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
