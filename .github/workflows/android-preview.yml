@@ -58,16 +58,29 @@ jobs:
           tools/build-android.sh x86_64 build/android/smoke.apk
           adb start-server
           "$ANDROID_HOME/emulator/emulator" -avd farmer -no-window -no-audio -no-boot-anim \
-            -no-snapshot -gpu swiftshader_indirect -no-metrics > build/android/emulator.log 2>&1 &
-          timeout 150 adb wait-for-device
+            -no-snapshot -gpu swiftshader_indirect -accel on -port 5570 > build/android/emulator.log 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          device=emulator-5570
+          booted=false
           for attempt in {1..90}; do
-            if adb shell getprop sys.boot_completed | tr -d '\r' | grep -qx 1; then break; fi
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then break; fi
+            if adb -s "$device" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1; then
+              booted=true
+              break
+            fi
             sleep 2
           done
-          adb install --streaming -r build/android/smoke.apk
-          adb shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
+          if [[ "$booted" != true ]]; then
+            tail -15 build/android/emulator.log | while IFS= read -r line; do
+              echo "::error title=Emulator startup::$line"
+            done
+            exit 1
+          fi
+          adb -s "$device" install --streaming -r build/android/smoke.apk
+          adb -s "$device" shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
           for attempt in {1..120}; do
-            adb logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
+            adb -s "$device" logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
             if detail=$(grep -F 'FARMER_ANDROID_FAIL' build/android/device.log); then
               echo "::error title=Offline engine failure::$detail"
               exit 1
@@ -75,5 +88,7 @@ jobs:
             if grep -F 'FARMER_ANDROID_OK' build/android/device.log; then exit 0; fi
             sleep 2
           done
-          tail -150 build/android/device.log
+          tail -10 build/android/device.log | while IFS= read -r line; do
+            echo "::error title=No Android smoke result::$line"
+          done
           exit 1
