@@ -5,7 +5,9 @@ const Style = preload("res://src/workshop_style.gd")
 const MathWorkshop = preload("res://main.tscn")
 const PythonWorkshop = preload("res://src/python_workshop.gd")
 const Tutorial = preload("res://src/route_tutorial.gd")
+const LeanBasics = preload("res://src/lean_basics.gd")
 const TUTORIAL_SAVE := "user://route_tutorials.cfg"
+const MATH_INTRO := "lean_basics"
 
 var route_menu: Control
 var math_button: Button
@@ -49,7 +51,7 @@ func _ready() -> void:
 	python_button = _route_button(plaque, "Python", "发货车间", Vector2(38, 171), "python")
 	math_button = _route_button(plaque, "Math", "Lean 4 证明工坊", Vector2(324, 171), "math")
 	python_tutorial_button = _tutorial_button(plaque, "Python 教程", Vector2(77, 346), "python")
-	math_tutorial_button = _tutorial_button(plaque, "Math 教程", Vector2(363, 346), "math")
+	math_tutorial_button = _tutorial_button(plaque, "Lean 4 入门", Vector2(363, 346), "math")
 	python_button.grab_focus()
 
 func _route_button(panel: Panel, name: String, description: String, at: Vector2, route: String) -> Button:
@@ -86,7 +88,9 @@ func _tutorial_button(panel: Panel, caption: String, at: Vector2, route: String)
 	return button
 
 func _enter(route: String) -> void:
-	if tutorial_progress.get_value("seen", route, false):
+	var completed := (bool(tutorial_progress.get_value(MATH_INTRO, "completed", false)) if route == "math"
+		else bool(tutorial_progress.get_value("seen", route, false)))
+	if completed:
 		_open_workshop(route)
 	else:
 		_show_tutorial(route)
@@ -98,16 +102,36 @@ func _show_tutorial(route: String) -> void:
 		button.disabled = true
 	tutorial = Tutorial.new()
 	tutorial.route = route
+	if route == "math":
+		tutorial.step = clampi(int(tutorial_progress.get_value(MATH_INTRO, "step", 0)), 0, LeanBasics.LESSONS.size() - 1)
+		if tutorial_progress.has_section_key(MATH_INTRO, "draft"):
+			tutorial.saved_draft = tutorial_progress.get_value(MATH_INTRO, "draft")
+		tutorial.lesson_advanced.connect(_save_math_draft)
 	tutorial.enter_workshop.connect(_finish_tutorial.bind(route))
-	tutorial.return_to_menu.connect(_close_tutorial.bind(route))
+	tutorial.return_to_menu.connect(_leave_tutorial.bind(route))
 	add_child(tutorial)
 	tutorial.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 func _finish_tutorial(route: String) -> void:
-	tutorial_progress.set_value("seen", route, true)
+	if route == "math":
+		tutorial_progress.set_value(MATH_INTRO, "completed", true)
+		tutorial_progress.erase_section_key(MATH_INTRO, "step")
+		tutorial_progress.erase_section_key(MATH_INTRO, "draft")
+	else:
+		tutorial_progress.set_value("seen", route, true)
 	tutorial_progress.save(TUTORIAL_SAVE)
 	_close_tutorial(route)
 	_open_workshop(route)
+
+func _save_math_draft() -> void:
+	tutorial_progress.set_value(MATH_INTRO, "step", tutorial.step)
+	tutorial_progress.set_value(MATH_INTRO, "draft", tutorial.editor.text)
+	tutorial_progress.save(TUTORIAL_SAVE)
+
+func _leave_tutorial(route: String) -> void:
+	if route == "math":
+		_save_math_draft()
+	_close_tutorial(route)
 
 func _close_tutorial(route: String) -> void:
 	if tutorial == null:
@@ -138,3 +162,7 @@ func _return_to_menu() -> void:
 	active_route = ""
 	route_menu.show()
 	focus.grab_focus()
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_PAUSED] and tutorial != null and tutorial.route == "math":
+		_save_math_draft()

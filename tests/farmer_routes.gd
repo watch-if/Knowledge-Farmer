@@ -21,7 +21,7 @@ func _run() -> void:
 	_expect(menu.math_button.visible and menu.python_button.visible, "Both route buttons are visible")
 	menu.python_button.pressed.emit()
 	_expect(menu.tutorial != null and menu.active_workshop == null, "Fresh Python entry starts the beginner tutorial")
-	await _complete_tutorial(menu.tutorial, "python")
+	await _complete_python_tutorial(menu.tutorial)
 	_expect(menu.active_route == "python", "Completing the tutorial opens the Python workbench")
 	var track = menu.active_workshop
 	track.check_button.pressed.emit()
@@ -63,9 +63,13 @@ Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"An
 		await _capture("farmer-yard.png")
 	track.home_button.pressed.emit()
 	_expect(menu.active_route.is_empty(), "Python workbench returns to menu")
+	menu.tutorial_progress.set_value("seen", "math", true)
 	menu.math_button.pressed.emit()
-	_expect(menu.tutorial != null, "Fresh Math entry starts a distinct Lean tutorial")
-	await _complete_tutorial(menu.tutorial, "math")
+	_expect(menu.tutorial != null, "Legacy Math tutorial completion still opens the Lean course")
+	if menu.tutorial == null:
+		quit(1)
+		return
+	await _complete_lean_course(menu)
 	_expect(menu.active_route == "math" and menu.active_workshop.editors.has("Equation"), "Math opens the existing Lean editor")
 	menu.active_workshop.return_button.pressed.emit()
 	_expect(menu.active_route.is_empty(), "Math workbench returns to menu")
@@ -84,14 +88,18 @@ Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"An
 	menu = current_scene
 	menu.math_button.pressed.emit()
 	_expect(menu.active_route == "math" and menu.tutorial == null, "Completed tutorial stays dismissed after reloading the menu")
+	menu.active_workshop.return_button.pressed.emit()
+	menu.math_tutorial_button.pressed.emit()
+	_expect(menu.tutorial != null and menu.tutorial.step == 0, "Graduates can reopen the course from lesson one")
+	menu.tutorial.return_button.pressed.emit()
 	if failures == 0:
 		print("%d farmer route checks passed" % checks)
 	quit(0 if failures == 0 else 1)
 
-func _complete_tutorial(guide: Control, route: String) -> void:
+func _complete_python_tutorial(guide: Control) -> void:
 	_expect(guide.advance_button.disabled, "Tutorial waits for a real check")
 	if OS.has_environment("FARMER_CAPTURE"):
-		await _capture("farmer-tutorial-" + route + ".png")
+		await _capture("farmer-tutorial-python.png")
 	guide.run_button.pressed.emit()
 	await _wait_for_check(guide)
 	_expect(not guide.advance_button.disabled, "Prefilled example runs in the real runtime")
@@ -100,11 +108,61 @@ func _complete_tutorial(guide: Control, route: String) -> void:
 	guide.run_button.pressed.emit()
 	await _wait_for_check(guide)
 	_expect(guide.advance_button.disabled, "Unchanged program does not pass the edit step")
-	guide.editor.text = 'print("开始备货")' if route == "python" else "theorem firstProof : (3 : Nat) = 3 := by\n  rfl"
+	guide.editor.text = 'print("开始备货")'
 	guide.run_button.pressed.emit()
 	await _wait_for_check(guide)
 	_expect(not guide.advance_button.disabled, "Changing one part passes the tutorial")
 	guide.advance_button.pressed.emit()
+
+func _complete_lean_course(menu: Control) -> void:
+	var guide = menu.tutorial
+	_expect(not guide.skip_button.visible, "Lean course requires a checked graduation exercise")
+	guide.run_button.pressed.emit()
+	await _wait_for_check(guide)
+	_expect(guide.advance_button.disabled and guide.result_view.text.contains("⊢"), "Unfinished first proof displays the real Lean goal")
+	guide.editor.text = "theorem warmup : (2 : Nat) = 2 := by\n  trace_state\n  rfl"
+	guide.run_button.pressed.emit()
+	await _wait_for_check(guide)
+	_expect(not guide.advance_button.disabled, "Writing rfl passes the first Lean exercise")
+	if guide.advance_button.disabled:
+		quit(1)
+		return
+	guide.advance_button.pressed.emit()
+	guide.editor.text += "\n-- my draft"
+	guide.return_button.pressed.emit()
+	var persisted := ConfigFile.new()
+	_expect(persisted.load("user://route_tutorials.cfg") == OK, "The Lean course progress is written to disk")
+	_expect(persisted.get_value("lean_basics", "step", -1) == 1
+		and str(persisted.get_value("lean_basics", "draft", "")).ends_with("-- my draft"), "The saved lesson and draft survive an app restart")
+	menu.math_button.pressed.emit()
+	guide = menu.tutorial
+	_expect(guide.step == 1 and guide.editor.text.ends_with("-- my draft"), "Returning to Math restores the next exercise and its draft")
+	if OS.has_environment("FARMER_CAPTURE"):
+		await _capture("farmer-tutorial-lean.png")
+	var solutions := [
+		"theorem keep (P : Prop) : P → P := by\n  intro h\n  trace_state\n  exact h",
+		"theorem bridge (P Q R : Prop) (h : P) (f : P → Q) (g : Q → R) : R := by\n  have middle : Q := f h\n  apply g\n  exact middle",
+		"theorem replace (f : Nat → Nat) (a b : Nat) (h : a = b) : f a = f b := by\n  rw [h]",
+		"def twice (n : Nat) : Nat := n + n\n#check twice\n#eval twice 3",
+		"theorem chain (a b c : Nat) (h1 : a = b) (h2 : b = c) : a = c := by\n  calc\n    a = b := h1\n    _ = c := h2",
+		"theorem tidy (n m : Nat) (h : m = n + 1) : (m + 0) + 1 = n + 2 := by\n  simp only [Nat.add_zero]\n  omega",
+		"def doubleCount : Nat → Nat\n  | 0 => 0\n  | n + 1 => doubleCount n + 2\n#eval doubleCount 4",
+		"theorem addFrontZero (n : Nat) : 0 + n = n := by\n  induction n with\n  | zero => rfl\n  | succ n ih =>\n    calc\n      0 + (n + 1) = (0 + n) + 1 := by rfl\n      _ = n + 1 := by rw [ih]",
+		"import TrainingTools\n\ntheorem graduate : ∀ n : Nat, start n + 1 = n + 1 := by\n  intro n\n  rw [addZero n]",
+	]
+	for index in solutions.size():
+		_expect(guide.step == index + 1, "Lean progression moves one exercise at a time")
+		guide.run_button.pressed.emit()
+		await _wait_for_check(guide)
+		_expect(guide.advance_button.disabled, "Unfinished Lean exercise %d cannot unlock the next" % (index + 2))
+		guide.editor.text = solutions[index]
+		guide.run_button.pressed.emit()
+		await _wait_for_check(guide)
+		_expect(not guide.advance_button.disabled, "Lean 4 accepts exercise %d: %s" % [index + 2, guide.result_view.text])
+		if guide.advance_button.disabled:
+			quit(1)
+			return
+		guide.advance_button.pressed.emit()
 
 func _capture(filename: String) -> void:
 	await RenderingServer.frame_post_draw
@@ -121,7 +179,7 @@ func _wait_for_check(track: Control) -> void:
 	var deadline := Time.get_ticks_msec() + 12000
 	while track.worker != null and Time.get_ticks_msec() < deadline:
 		await process_frame
-	_expect(track.worker == null, "Python verification completed")
+	_expect(track.worker == null, "Runtime verification completed")
 
 func _expect(condition: bool, description: String) -> void:
 	checks += 1
