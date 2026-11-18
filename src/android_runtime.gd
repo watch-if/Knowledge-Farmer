@@ -8,6 +8,7 @@ static var runtime_lock := Mutex.new()
 static var installed_root := ""
 static var native_dir := ""
 static var android_apk_path := ""
+static var android_files_dir := ""
 
 static func configure() -> void:
 	if OS.get_name() != "Android" or not Engine.has_singleton("AndroidRuntime"):
@@ -17,6 +18,9 @@ static func configure() -> void:
 	if context == null:
 		return
 	android_apk_path = String(context.getPackageCodePath())
+	var files: Object = context.getFilesDir()
+	if files != null:
+		android_files_dir = String(files.getAbsolutePath())
 	for directory in apk_library_candidates(android_apk_path):
 		if FileAccess.file_exists(directory.path_join("libfarmer_loader.so")):
 			native_dir = directory
@@ -27,6 +31,11 @@ static func apk_library_candidates(apk_path: String) -> PackedStringArray:
 		return []
 	var root := apk_path.get_base_dir().path_join("lib")
 	return PackedStringArray([root.path_join("arm64"), root.path_join("x86_64")])
+
+static func local_path(relative: String) -> String:
+	if OS.get_name() == "Android" and not android_files_dir.is_empty():
+		return android_files_dir.path_join(relative)
+	return ProjectSettings.globalize_path("user://" + relative)
 
 static func execute(program: String, desktop_executable: String, arguments: PackedStringArray, output: Array) -> int:
 	if OS.get_name() != "Android":
@@ -109,7 +118,7 @@ static func _install_data() -> String:
 	var revision := FileAccess.get_file_as_string(STAMP).strip_edges()
 	if not revision.is_valid_identifier():
 		return "此 APK 缺少 Python 与 Lean 运行时数据。"
-	var root := ProjectSettings.globalize_path("user://android-runtime").path_join(revision)
+	var root := local_path("android-runtime").path_join(revision)
 	var marker := root.path_join("ready")
 	if FileAccess.file_exists(marker):
 		installed_root = root

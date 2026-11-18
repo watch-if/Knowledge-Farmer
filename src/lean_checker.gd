@@ -22,7 +22,7 @@ static func check(executable: String, source: String, lesson: Dictionary, librar
 	return result
 
 static func _check(executable: String, source: String, lesson: Dictionary, library: Dictionary) -> Dictionary:
-	var dir := ProjectSettings.globalize_path("user://lean_runtime/%d" % OS.get_process_id())
+	var dir := Runtime.local_path("lean_runtime/%d" % OS.get_process_id())
 	if DirAccess.make_dir_recursive_absolute(dir) != OK:
 		return {"ok": false, "output": "无法创建本地 Lean 工作目录。"}
 	var former := OS.get_environment("LEAN_PATH")

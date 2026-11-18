@@ -28,9 +28,10 @@ static func check(source: String, lesson: Dictionary) -> Dictionary:
 	return {"ok": true, "output": message.substr(0, separator).strip_edges(), "boxes": boxes}
 
 static func _run_grader(source: String, lesson: Dictionary) -> Dictionary:
-	var path := ProjectSettings.globalize_path("user://python_runtime/%d" % OS.get_process_id())
-	if DirAccess.make_dir_recursive_absolute(path) != OK:
-		return {"ok": false, "output": "无法建立本地 Python 工作目录。"}
+	var path := Runtime.local_path("python_runtime/%d" % OS.get_process_id())
+	var directory_error := DirAccess.make_dir_recursive_absolute(path)
+	if directory_error != OK:
+		return {"ok": false, "output": "无法建立本地 Python 工作目录（%s）：%s" % [error_string(directory_error), path]}
 	var grader_path := path.path_join("grader.py")
 	var player_path: String = path.path_join(lesson.file)
 	var grader_source := FileAccess.get_file_as_string("res://src/python_grader.py")
