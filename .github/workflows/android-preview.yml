@@ -95,6 +95,8 @@ jobs:
             adb -s "$device" logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
             if detail=$(grep -F 'FARMER_ANDROID_FAIL' build/android/device.log); then
               echo "::error title=Offline engine failure::$detail"
+              paths=$(adb -s "$device" shell dumpsys package org.watchif.farmer | grep -Ei 'nativeLibrary|primaryCpuAbi|legacyNativeLibrary|extractNative' | tr -d '\r' | paste -sd '|' - || true)
+              echo "::error title=Android native library layout::$paths"
               exit 1
             fi
             if grep -F 'FARMER_ANDROID_OK' build/android/device.log; then exit 0; fi

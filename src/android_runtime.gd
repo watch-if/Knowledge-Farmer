@@ -9,6 +9,7 @@ static var installed_root := ""
 static var native_dir := ""
 static var android_apk_path := ""
 static var android_files_dir := ""
+static var library_diagnostics := ""
 
 static func configure() -> void:
 	if OS.get_name() != "Android" or not Engine.has_singleton("AndroidRuntime"):
@@ -21,10 +22,31 @@ static func configure() -> void:
 	var files: Object = context.getFilesDir()
 	if files != null:
 		android_files_dir = String(files.getAbsolutePath())
-	for directory in apk_library_candidates(android_apk_path):
-		if FileAccess.file_exists(directory.path_join("libfarmer_loader.so")):
+	var directories := apk_library_candidates(android_apk_path)
+	var class_loader: Object = context.getClassLoader()
+	if class_loader != null:
+		var loader_path: Variant = class_loader.findLibrary("farmer_loader")
+		if loader_path != null:
+			var resolved := String(loader_path)
+			if resolved.is_absolute_path() and not resolved.contains("!/"):
+				native_dir = resolved.get_base_dir()
+				return
+	library_diagnostics = ", ".join(directories)
+	for directory in directories:
+		var loader := directory.path_join("libfarmer_loader.so")
+		if FileAccess.file_exists(loader) or _java_file_exists(loader):
 			native_dir = directory
 			return
+
+static func _java_file_exists(path: String) -> bool:
+	if not Engine.has_singleton("JavaClassWrapper"):
+		return false
+	var java: Object = Engine.get_singleton("JavaClassWrapper")
+	var file_class: Object = java.wrap("java.io.File")
+	if file_class == null:
+		return false
+	var file: Object = file_class.new(path)
+	return file != null and file.exists()
 
 static func apk_library_candidates(apk_path: String) -> PackedStringArray:
 	if not apk_path.is_absolute_path():
@@ -71,7 +93,7 @@ static func _execute_mobile(program: String, arguments: PackedStringArray, outpu
 	if native_dir.is_empty():
 		native_dir = _native_directory()
 	if native_dir.is_empty():
-		output.append("无法找到 APK 内的运行时目录。安装路径：" + android_apk_path)
+		output.append("无法找到 APK 内的运行时目录。已检查：" + library_diagnostics)
 		return 1
 	var error := _install_data()
 	if not error.is_empty():
