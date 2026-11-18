@@ -1,6 +1,7 @@
 name: Android runtime verification
 
 on:
+  workflow_call:
   push:
     branches: [android/preview]
 
@@ -90,11 +91,17 @@ jobs:
           adb -s "$device" install --streaming -r build/android/smoke.apk
           adb -s "$device" shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
           for attempt in {1..120}; do
-            adb -s "$device" logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
+            adb -s "$device" logcat -d -s godot:V AndroidRuntime:E libc:V DEBUG:V > build/android/device.log
             if detail=$(grep -F 'FARMER_ANDROID_FAIL' build/android/device.log); then
               echo "::error title=Offline engine failure::$detail"
               paths=$(adb -s "$device" shell dumpsys package org.watchif.farmer | grep -Ei 'nativeLibrary|primaryCpuAbi|legacyNativeLibrary|extractNative' | tr -d '\r' | paste -sd '|' - || true)
               echo "::error title=Android native library layout::$paths"
+              sleep 2
+              adb -s "$device" logcat -b all -d > build/android/failure.log
+              syscall=$(grep -Ei 'SIGSYS|seccomp|disallowed system call|bad system call' build/android/failure.log | tail -8 | paste -sd '|' - || true)
+              if [[ -n "$syscall" ]]; then
+                echo "::error title=Android runtime system call::$syscall"
+              fi
               exit 1
             fi
             if grep -F 'FARMER_ANDROID_OK' build/android/device.log; then exit 0; fi

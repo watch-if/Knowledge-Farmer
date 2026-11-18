@@ -26,15 +26,18 @@ func _process(_delta: float) -> void:
 	get_tree().quit(0 if result.is_empty() else 1)
 
 func _exercise() -> String:
+	print("FARMER_ANDROID_STAGE Python warmup")
 	var warmup := PythonRunner.check_warmup('print("开始备货")', 1)
 	if not warmup.ok:
 		return warmup.output
 	for lesson in PythonCourse.LESSONS:
+		print("FARMER_ANDROID_STAGE ", lesson.id)
 		var result := PythonRunner.check(lesson.solution, lesson)
 		if not result.ok:
 			return lesson.id + " " + result.output
 	var modules := {}
 	for lesson in MathCourse.LESSONS:
+		print("FARMER_ANDROID_STAGE ", lesson.id)
 		var result := LeanChecker.check(LeanChecker.tool(), lesson.solution, lesson, modules)
 		if not result.ok:
 			return lesson.id + " " + result.output
