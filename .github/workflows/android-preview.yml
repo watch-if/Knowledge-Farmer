@@ -16,7 +16,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare Godot, build tools and emulator
+      - name: Prepare Godot and patchelf
         shell: bash
         run: |
           set -euo pipefail
@@ -28,14 +28,22 @@ jobs:
           curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_export_templates.tpz" -o build/android/templates.tpz
           unzip -qo build/android/godot.zip -d build/android
           unzip -p build/android/templates.tpz templates/android_release.apk > build/android/android_release.apk
+      - name: Prepare Android SDK and check hardware acceleration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'echo "::error title=Android setup failed::$BASH_COMMAND"' ERR
+          sdkmanager --licenses >/dev/null < <(yes)
           sdkmanager 'build-tools;36.0.0' 'emulator' 'system-images;android-30;google_apis;x86_64'
-          echo no | avdmanager create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force
+          avdmanager create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force <<< no
+          test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
 
       - name: Run offline Python and Lean inside Android
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          trap 'echo "::error title=Android runtime test failed::$BASH_COMMAND"' ERR
           adb start-server
           "$ANDROID_HOME/emulator/emulator" -avd farmer -no-window -no-audio -no-boot-anim \
             -no-snapshot -gpu swiftshader_indirect -no-metrics > build/android/emulator.log 2>&1 &
@@ -57,7 +65,10 @@ jobs:
           adb shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
           for attempt in {1..120}; do
             adb logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
-            if grep -F 'FARMER_ANDROID_FAIL' build/android/device.log; then exit 1; fi
+            if detail=$(grep -F 'FARMER_ANDROID_FAIL' build/android/device.log); then
+              echo "::error title=Offline engine failure::$detail"
+              exit 1
+            fi
             if grep -F 'FARMER_ANDROID_OK' build/android/device.log; then exit 0; fi
             sleep 2
           done
