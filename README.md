@@ -1,39 +1,41 @@
-# Zeta Lab
+# farmer
 
-Zeta Lab 是一款原生中文桌面数学游戏。玩家在黄铜工坊中编写 Lean 4 定义和证明，完成练习后可在后面的文件里调用自己已证的定理。
+farmer 是一款原生中文桌面学习游戏。启动后选择 **Python** 或 **Math**，随时可返回选路。两条路线各自保存进度。
 
-首个可玩章节包括「读懂等式 → 有限累加 → 归纳证明 · 奇数和 → 改写两项」。知识树展示了数学分析、复变和数论一直到 11/12 与 7/8 预印本精读的课程方向。当前可进入四个练习。
+## Python · 发货车间
 
-## 开始玩
+用一个项目练文件自动化与简单采集。先把供应商给的 CSV 清成统一格式，再用 Python 向本机练习网页发出 HTTP 请求，把网页商品数据写成同格式的报表。每关在两批数据上运行脚本，给出真实错误或报表预览。
 
-Windows x64 试玩包解压后，运行 `ZetaLab.exe`。请保留旁边的 `lean` 目录，游戏用其中的 Lean 4.19.0 在本机检查 Lean 源码。试玩包面向 Windows 10 及更新版本。
+- **整理报价**：补完 `clean_quotes.py`，读 `products.csv`，清理商品名，把价格格式化为两位小数，输出 `report.csv`。
+- **采集目录**：补完 `collect_catalog.py` 的 HTML 解析，从练习页提取商品编号、名称、价格，输出相同的 CSV。
+- 点击「运行脚本」生成装车清单。验收通过后，选择「装一箱」或「开始装车」，在输送带上看对应的货箱进入货车。点击「i 订单与提示」检查清单或逐级看写法。草稿和进度自动保存。
+
+## Math · Lean 4 证明工坊
+
+首个可玩章节包括「读懂等式 → 有限累加 → 归纳证明 · 奇数和 → 改写两项」。知识树展示通往 11/12 和 7/8 预印本精读的路线。此前 Zeta Lab 的 Math 存档路径保留。
 
 - 修改 Lean 文件，点击窗口上的三角按钮或底部「检查 Lean」。
-- `−` 收起文件。点击左上方的文件牌恢复窗口。拖动文件标题可移动窗口。
-- `+` 新建独立 Lean 文件，可以通过 `import Notebook1` 调用另一个草稿文件。
-- `i` 打开学习目标、分级提示和图解。可以从「查看诊断」读 Lean 的真实报错。
-- `⌃` 展开知识树。点击资源栏可查看已归档的定理和定义。改写关卡可以点击工作台上的项，定位对应的 Lean 代码。
-- 游戏在本地自动保存进度、草稿和代码窗位置。检查 Lean 源码时会运行本机 Lean，包括源码中的求值命令，请使用自己编写或信任的源码。
+- `−` 收起文件，点文件牌恢复，拖动标题可移动窗口。
+- `+` 新建 Lean 文件，可以用 `import Notebook1` 调用另一个草稿。
+- `i` 查看任务、分级提示和图解，`⌃` 展开知识树。点资源栏查看已归档的定义和定理。
+- Lean 的诊断来自实际检查，机械臂回放本关推荐的推导路线。
 
 ## 从源码运行
 
-需要 Godot 4.6.3 和 Lean 4.19.0。将 `ZETA_LEAN` 设为 Lean 可执行程序的路径，也可以把 Lean 加到系统 PATH。
+需要 Godot 4.6.3。Python 路线需要 Python 3.9 或更新版本，Math 路线使用 Lean 4.19.0。游戏优先使用 `FARMER_PYTHON` 或 `ZETA_LEAN` 指定的可执行文件，其次使用随 Windows 包提供的运行时，再尝试系统 PATH。代码在本机运行，请提交自己编写或信任的源码。
 
 ```bash
 godot --headless --editor --import --path . --quit
 godot --path .
 ```
 
-如果 Lean 通过 Elan 安装，请在运行 Godot 前选定 Lean 4.19.0。Windows 导出使用 Godot 的 4.6.3 官方模板，导出预设名为 `Windows 64`。向玩家分发时，需把 Lean 运行时与 `ZetaLab.exe` 放在一起，目录结构为 `lean/bin/lean.exe` 和 `lean/lib/lean`。
+Windows 用 Godot 的同版本模板和 `Windows 64` 导出预设，导出为 `farmer.exe`。独立试玩包目录包含 `python/python.exe`、`lean/bin/lean.exe` 以及各自的标准库。解压后保持该目录结构。
 
 ## 验证
 
-`workshop_check.gd` 用真实 Lean 验证四关的正确答案，以及错误类型、未完成证明和公理占位。流程测试写入自动存档，使用新的数据目录运行。
-
 ```bash
-export ZETA_LEAN=/path/to/lean
+export ZETA_LEAN=/path/to/lean FARMER_PYTHON=/path/to/python3
 godot --headless --path . --script tests/workshop_check.gd
 XDG_DATA_HOME="$(mktemp -d)" godot --headless --path . --script tests/workshop_flow.gd
+XDG_DATA_HOME="$(mktemp -d)" godot --headless --path . --script tests/farmer_routes.gd
 ```
-
-机械臂当前播放与关卡成功结果对应的演示。Lean 诊断显示真实检查结果，改写台展示本关推荐的推导路线。

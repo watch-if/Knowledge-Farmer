@@ -1,8 +1,10 @@
 config_version=5
 
 [application]
-config/name="Zeta Lab"
-run/main_scene="res://main.tscn"
+config/name="farmer"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="godot/app_userdata/Zeta Lab"
+run/main_scene="res://menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 
 [display]

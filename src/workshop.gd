@@ -1,5 +1,8 @@
 extends Control
 
+signal return_to_menu
+
+const Style = preload("res://src/workshop_style.gd")
 const Course = preload("res://src/course.gd")
 const Checker = preload("res://src/lean_checker.gd")
 const Arm = preload("res://src/arm.gd")
@@ -35,51 +38,17 @@ var screen_goal: Label
 var shelf: Array[Label] = []
 var overlay: Panel
 var modal_input_shield: ColorRect
+var return_button: Button
 var run_button: Button
 var advance_button: Button
 var current_file := ""
 
 func _ready() -> void:
 	_load()
-	theme = _make_theme()
+	theme = Style.make()
 	_create_shell()
 	_refresh()
 	set_process(false)
-
-func _make_theme() -> Theme:
-	var result := Theme.new()
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI"])
-	font.font_weight = 500
-	var packaged := load("res://assets/workshop-sc.otf") as FontFile
-	if packaged:
-		font.fallbacks = [packaged]
-	result.default_font = font
-	result.default_font_size = 17
-	result.set_color("font_color", "Label", GOLD)
-	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
-		var color := Color("#204b3a")
-		match state:
-			"hover": color = Color("#36674c")
-			"pressed": color = Color("#40261b")
-			"disabled": color = Color("#47372b")
-		result.set_stylebox(state, "Button", _box(color, Color("#ae783a"), 6, 7))
-	result.set_color("font_color", "Button", Color("#fff0c9"))
-	result.set_color("font_disabled_color", "Button", Color("#b1a088"))
-	result.set_stylebox("panel", "Panel", _box(Color("#2e1a13"), Color("#a9773d"), 9, 0))
-	return result
-
-func _box(fill: Color, edge: Color, radius: int, padding: int) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = fill
-	style.border_color = edge
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(radius)
-	style.content_margin_left = padding
-	style.content_margin_right = padding
-	style.content_margin_top = padding
-	style.content_margin_bottom = padding
-	return style
 
 func _place(node: Control, bounds: Rect2, parent: Control = self) -> void:
 	parent.add_child(node)
@@ -112,7 +81,8 @@ func _create_shell() -> void:
 
 	var header := Panel.new()
 	_place(header, Rect2(18, 12, 1404, 62))
-	_text("Zeta Lab", Rect2(23, 6, 183, 48), 32, GOLD, header)
+	_text("farmer · Math", Rect2(20, 6, 203, 48), 25, GOLD, header)
+	return_button = _button("返回选路", Rect2(1107, 10, 122, 42), _go_to_menu, header)
 	var resources := _button("", Rect2(225, 10, 493, 42), _open_catalog, header)
 	resources.tooltip_text = "查看已归档的知识"
 	resource_label = _text("", Rect2(12, 7, 468, 27), 17, GOLD, resources)
@@ -279,8 +249,8 @@ func _open_editor(filename: String) -> void:
 	edit.add_theme_color_override("current_line_color", Color("#ecd09f"))
 	edit.add_theme_color_override("line_number_color", Color("#7b5b42"))
 	edit.add_theme_color_override("selection_color", Color("#d7c8a2"))
-	edit.add_theme_stylebox_override("normal", _box(PAPER, Color("#d09a50"), 4, 15))
-	edit.add_theme_stylebox_override("focus", _box(Color.TRANSPARENT, Color("#d0a456"), 4, 15))
+	edit.add_theme_stylebox_override("normal", Style.box(PAPER, Color("#d09a50"), 4, 15))
+	edit.add_theme_stylebox_override("focus", Style.box(Color.TRANSPARENT, Color("#d0a456"), 4, 15))
 	var highlighting := CodeHighlighter.new()
 	for word in ["import", "def", "theorem", "by", "induction", "with", "calc", "sorry", "rw", "rfl"]:
 		highlighting.add_keyword_color(word, Color("#703784"))
@@ -393,6 +363,7 @@ func _run_file(filename: String) -> void:
 		return
 	set_process(true)
 	run_button.disabled = true
+	return_button.disabled = true
 	current_status("Lean 正在检查 %s.lean…" % filename)
 
 func _process(_delta: float) -> void:
@@ -401,6 +372,7 @@ func _process(_delta: float) -> void:
 	var result: Dictionary = worker.wait_to_finish()
 	worker = null
 	run_button.disabled = false
+	return_button.disabled = false
 	set_process(false)
 	last_diagnostics = String(result.output).strip_edges()
 	if last_diagnostics.is_empty():
@@ -418,6 +390,11 @@ func _process(_delta: float) -> void:
 		arm.replay(Course.LESSONS[stage].id, _set_display)
 	current_status("已验证并归档 · " + Course.LESSONS[checked_stage].symbol)
 	_save()
+
+func _go_to_menu() -> void:
+	if worker == null:
+		_save()
+		return_to_menu.emit()
 
 func _set_display(value: String) -> void:
 	device_output.text = value
