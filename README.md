@@ -48,4 +48,6 @@ XDG_DATA_HOME="$(mktemp -d)" godot --headless --path . --script tests/farmer_rou
 
 ## GitHub 自动发布
 
-每次推送到 `main` 后，GitHub Actions 会运行两条路线的测试，构建 Windows x64 试玩包，并在 Releases 发布带两个运行时的 `farmer-Windows-x64.zip`。预发行版本号从 `v0.2.1` 起随工作流编号递增。
+每次推送到 `main` 后，GitHub Actions 会测试两条路线，再构建 Windows x64 ZIP 和 Android ARM64 APK。两个附件上传完成后，才会公开同一条 GitHub 预发行。常规联发使用仓库配置的 Android 长期签名。
+
+可以手动运行「Windows and Android prerelease」并选择 Android 安装试装模式。此模式仍在同一预发行页提供两个包，APK 使用独立包名和临时签名。

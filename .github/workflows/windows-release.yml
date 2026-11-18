@@ -1,16 +1,25 @@
-name: Windows prerelease
+name: Windows and Android prerelease
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      android_installation_preview:
+        description: "Use a fresh test signature and app ID for the Android installation preview"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   windows:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      ANDROID_INSTALLATION_PREVIEW: ${{ inputs.android_installation_preview == true }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -79,7 +88,7 @@ jobs:
           FARMER_ANDROID_PASSWORD: ${{ secrets.FARMER_ANDROID_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$FARMER_ANDROID_KEYSTORE_B64" || -z "$FARMER_ANDROID_PASSWORD" ]]; then
+          if [[ "$ANDROID_INSTALLATION_PREVIEW" != true && ( -z "$FARMER_ANDROID_KEYSTORE_B64" || -z "$FARMER_ANDROID_PASSWORD" ) ]]; then
             echo "::error::Set the Android signing secrets before publishing the Windows and Android release."
             exit 1
           fi
@@ -88,10 +97,29 @@ jobs:
           unzip -p tools/templates.tpz templates/android_release.apk > tools/android_release.apk
           export FARMER_ANDROID_TEMPLATE="$PWD/tools/android_release.apk"
           export FARMER_ANDROID_VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))"
-          export FARMER_ANDROID_KEYSTORE="$(mktemp)"
-          trap 'rm -f "$FARMER_ANDROID_KEYSTORE"' EXIT
-          printf '%s' "$FARMER_ANDROID_KEYSTORE_B64" | base64 -d > "$FARMER_ANDROID_KEYSTORE"
-          tools/build-android.sh arm64-v8a farmer-Android-arm64.apk
+          key_dir="$(mktemp -d)"
+          trap 'rm -rf "$key_dir"' EXIT
+          export FARMER_ANDROID_KEYSTORE="$key_dir/farmer.p12"
+          app_id=org.watchif.farmer
+          archive=farmer-Android-arm64.apk
+          if [[ "$ANDROID_INSTALLATION_PREVIEW" == true ]]; then
+            app_id="org.watchif.farmer.preview.v0_2_${GITHUB_RUN_NUMBER}"
+            archive=farmer-Android-arm64-preview.apk
+            export FARMER_ANDROID_PASSWORD="$(openssl rand -hex 24)"
+            echo "::add-mask::$FARMER_ANDROID_PASSWORD"
+            keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" \
+              -storepass:env FARMER_ANDROID_PASSWORD -keyalg RSA -keysize 3072 -alias farmer \
+              -validity 3650 -dname 'CN=farmer installation preview'
+            sed -i "s|package/unique_name=\"org.watchif.farmer\"|package/unique_name=\"$app_id\"|g" export_presets.cfg
+            sed -i 's|package/name="farmer"|package/name="farmer 试装版"|g' export_presets.cfg
+          else
+            printf '%s' "$FARMER_ANDROID_KEYSTORE_B64" | base64 -d > "$FARMER_ANDROID_KEYSTORE"
+          fi
+          tools/build-android.sh arm64-v8a "$archive"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump xmltree "$archive" --file AndroidManifest.xml |
+            grep -F "package=\"$app_id\""
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 4 "$archive"
+          printf 'FARMER_ANDROID_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
 
       - name: Publish Windows and Android together
         shell: bash
@@ -101,26 +129,34 @@ jobs:
           set -euo pipefail
           tag="v0.2.$GITHUB_RUN_NUMBER"
           windows=farmer-Windows-x64.zip
-          android=farmer-Android-arm64.apk
+          android="$FARMER_ANDROID_ARCHIVE"
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json; then
             notes=tools/release-notes.md
             cat > "$notes" <<NOTES
           下载 \`$windows\`，解压后运行 \`farmer.exe\`。请保留同目录的 Python 和 Lean 运行时文件夹。
-
-          Android 64 位设备安装 \`$android\`，更新时可以覆盖安装。
-
-          源码提交：$GITHUB_SHA
           NOTES
+
+            if [[ "$ANDROID_INSTALLATION_PREVIEW" == true ]]; then
+              cat >> "$notes" <<NOTES
+
+          Android ARM64 手机可安装 \`$android\`。这是独立包名和临时签名的试装版，存档独立。
+          现有 Android 模拟器测试在启动 Python 时出现 \`Bad system call\`。Python 和 Lean 关卡的真机运行仍待验证。
+          NOTES
+            else
+              printf '\nAndroid ARM64 手机可安装 `%s`。使用同一签名的版本可覆盖更新。\n' "$android" >> "$notes"
+            fi
+            printf '\n源码提交：%s\n' "$GITHUB_SHA" >> "$notes"
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "farmer $tag · Windows / Android 试玩版" --notes-file "$notes" --draft --prerelease
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json
           fi
           jq -e --arg sha "$GITHUB_SHA" '.targetCommitish == $sha' tools/release.json > /dev/null
+          required_assets='([.assets[] | select(.state == "uploaded") | .name] as $uploaded | ($uploaded | index($windows) != null and index($android) != null))'
           if jq -e '.isDraft' tools/release.json > /dev/null; then
             gh release upload "$tag" "$windows" "$android" --repo "$GITHUB_REPOSITORY" --clobber
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
-              --jq '([.assets[] | select(.state == "uploaded") | .name] as $uploaded | ($uploaded | index("farmer-Windows-x64.zip") != null and index("farmer-Android-arm64.apk") != null))' | grep -qx true
+              | jq -e --arg windows "$windows" --arg android "$android" "$required_assets" > /dev/null
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
           fi
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets \
-            --jq '.isDraft == false and ([.assets[] | select(.state == "uploaded") | .name] as $uploaded | ($uploaded | index("farmer-Windows-x64.zip") != null and index("farmer-Android-arm64.apk") != null))' | grep -qx true
+            | jq -e --arg windows "$windows" --arg android "$android" ".isDraft == false and $required_assets" > /dev/null
