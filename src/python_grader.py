@@ -2,6 +2,7 @@
 import csv
 import html
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -59,9 +60,11 @@ def write_data(lesson, folder, rows):
 
 
 def execute_script(script, folder, *arguments):
+    prefix = os.environ.get("FARMER_ANDROID_PYTHON_ARGV")
+    python = json.loads(prefix) if prefix else [sys.executable]
     try:
         result = subprocess.run(
-            [sys.executable, "-X", "utf8", str(script), *arguments],
+            [*python, "-X", "utf8", str(script), *arguments],
             cwd=folder,
             capture_output=True,
             encoding="utf-8",

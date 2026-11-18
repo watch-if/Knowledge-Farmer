@@ -1,5 +1,7 @@
 extends RefCounted
 
+const Runtime = preload("res://src/android_runtime.gd")
+
 static func executable() -> String:
 	var configured := OS.get_environment("FARMER_PYTHON").strip_edges()
 	if not configured.is_empty():
@@ -35,7 +37,7 @@ static func _run_grader(source: String, lesson: Dictionary) -> Dictionary:
 	if grader_source.is_empty() or not _write(grader_path, grader_source) or not _write(player_path, source):
 		return {"ok": false, "output": "无法准备练习脚本。"}
 	var output: Array = []
-	var status := OS.execute(executable(), ["-X", "utf8", grader_path, lesson.id, player_path], output, true)
+	var status := Runtime.execute("python", executable(), ["-X", "utf8", grader_path, lesson.id, player_path], output)
 	if status == -1:
 		return {"ok": false, "output": "无法启动 Python。请安装 Python 3，或设置 FARMER_PYTHON。"}
 	var message := String(output[0]).strip_edges() if not output.is_empty() else ""

@@ -1,0 +1,65 @@
+name: Android runtime verification
+
+on:
+  push:
+    branches: [android/preview]
+
+permissions:
+  contents: read
+
+jobs:
+  android-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare Godot, build tools and emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+          mkdir -p build/android
+          base=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable
+          curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_linux.x86_64.zip" -o build/android/godot.zip
+          curl -fSL --retry 3 "$base/Godot_v4.6.3-stable_export_templates.tpz" -o build/android/templates.tpz
+          unzip -qo build/android/godot.zip -d build/android
+          unzip -p build/android/templates.tpz templates/android_release.apk > build/android/android_release.apk
+          sdkmanager 'build-tools;36.0.0' 'emulator' 'system-images;android-30;google_apis;x86_64'
+          echo no | avdmanager create avd -n farmer -k 'system-images;android-30;google_apis;x86_64' --force
+          sudo chmod a+rw /dev/kvm
+
+      - name: Run offline Python and Lean inside Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          adb start-server
+          "$ANDROID_HOME/emulator/emulator" -avd farmer -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect -no-metrics > build/android/emulator.log 2>&1 &
+          export GODOT="$PWD/build/android/Godot_v4.6.3-stable_linux.x86_64"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export FARMER_ANDROID_TEMPLATE="$PWD/build/android/android_release.apk"
+          export FARMER_ANDROID_KEYSTORE="$PWD/build/android/smoke.keystore"
+          export FARMER_ANDROID_PASSWORD=testingonly
+          export FARMER_ANDROID_SMOKE=1
+          keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" -storepass:env FARMER_ANDROID_PASSWORD \
+            -keyalg RSA -keysize 2048 -validity 1 -alias farmer -dname 'CN=farmer Android runtime test'
+          tools/build-android.sh x86_64 build/android/smoke.apk
+          timeout 150 adb wait-for-device
+          for attempt in {1..90}; do
+            if adb shell getprop sys.boot_completed | tr -d '\r' | grep -qx 1; then break; fi
+            sleep 2
+          done
+          adb install --streaming -r build/android/smoke.apk
+          adb shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
+          for attempt in {1..120}; do
+            adb logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
+            if grep -F 'FARMER_ANDROID_FAIL' build/android/device.log; then exit 1; fi
+            if grep -F 'FARMER_ANDROID_OK' build/android/device.log; then exit 0; fi
+            sleep 2
+          done
+          tail -150 build/android/device.log
+          exit 1
