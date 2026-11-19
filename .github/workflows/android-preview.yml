@@ -1,8 +1,9 @@
 name: Android runtime verification
 
 on:
+  workflow_call:
   push:
-    branches: [android/preview]
+    branches: [android/preview, android/runtime-compatibility]
 
 permissions:
   contents: read
@@ -15,6 +16,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Install glibc build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bison gawk m4
 
       - name: Prepare Godot
         shell: bash
@@ -89,7 +95,7 @@ jobs:
           fi
           adb -s "$device" install --streaming -r build/android/smoke.apk
           adb -s "$device" shell monkey -p org.watchif.farmer -c android.intent.category.LAUNCHER 1
-          for attempt in {1..120}; do
+          for attempt in {1..180}; do
             adb -s "$device" logcat -d -s godot:V AndroidRuntime:E > build/android/device.log
             if detail=$(grep -F 'FARMER_ANDROID_FAIL' build/android/device.log); then
               echo "::error title=Offline engine failure::$detail"

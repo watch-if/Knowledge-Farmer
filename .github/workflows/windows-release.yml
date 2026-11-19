@@ -14,8 +14,15 @@ permissions:
   contents: write
 
 jobs:
+  android-runtime:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android-preview.yml
+
   windows:
     if: github.ref == 'refs/heads/main'
+    needs: android-runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -92,6 +99,8 @@ jobs:
             echo "::error::Set the Android signing secrets before publishing the Windows and Android release."
             exit 1
           fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bison gawk m4 gcc-aarch64-linux-gnu linux-libc-dev-arm64-cross
           export ANDROID_SDK_ROOT="$RUNNER_TEMP/farmer-android-sdk"
           tools/install-android-sdk.sh "$ANDROID_SDK_ROOT"
           unzip -p tools/templates.tpz templates/android_release.apk > tools/android_release.apk
@@ -111,7 +120,7 @@ jobs:
               -storepass:env FARMER_ANDROID_PASSWORD -keyalg RSA -keysize 3072 -alias farmer \
               -validity 3650 -dname 'CN=farmer installation preview'
             sed -i "s|package/unique_name=\"org.watchif.farmer\"|package/unique_name=\"$app_id\"|g" export_presets.cfg
-            sed -i 's|package/name="farmer"|package/name="farmer 试装版"|g' export_presets.cfg
+            sed -i "s|package/name=\"farmer\"|package/name=\"farmer 0.2.$GITHUB_RUN_NUMBER\"|g" export_presets.cfg
           else
             printf '%s' "$FARMER_ANDROID_KEYSTORE_B64" | base64 -d > "$FARMER_ANDROID_KEYSTORE"
           fi
@@ -140,7 +149,7 @@ jobs:
               cat >> "$notes" <<NOTES
 
           Android ARM64 手机可安装 \`$android\`。这是独立包名和临时签名的试装版，存档独立。
-          现有 Android 模拟器测试在启动 Python 时出现 \`Bad system call\`。Python 和 Lean 关卡的真机运行仍待验证。
+          同提交的 Android 模拟器已通过 Lean 首关和 Python 关卡检查。ARM64 真机仍待验证。
           NOTES
             else
               printf '\nAndroid ARM64 手机可安装 `%s`。使用同一签名的版本可覆盖更新。\n' "$android" >> "$notes"

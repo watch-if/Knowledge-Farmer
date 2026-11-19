@@ -1,0 +1,82 @@
+--- a/sysdeps/unix/sysv/linux/access.c
++++ b/sysdeps/unix/sysv/linux/access.c
+@@ -26,3 +25,0 @@
+-#ifdef __NR_access
+-  return INLINE_SYSCALL_CALL (access, file, type);
+-#else
+@@ -30 +26,0 @@
+-#endif
+--- a/sysdeps/unix/sysv/linux/not-errno.h
++++ b/sysdeps/unix/sysv/linux/not-errno.h
+@@ -30,3 +29,0 @@
+-#ifdef __NR_access
+-  res = INTERNAL_SYSCALL_CALL (access, err, pathname, mode);
+-#else
+@@ -34 +30,0 @@
+-#endif
+--- a/sysdeps/unix/sysv/linux/kernel-features.h
++++ b/sysdeps/unix/sysv/linux/kernel-features.h
+@@ -59 +59,3 @@
+-#define __ASSUME_SET_ROBUST_LIST	1
++/* Android app processes cannot register kernel robust lists.  Preserve the
++   userspace cleanup path for ordinary robust mutexes.  */
++#undef __ASSUME_SET_ROBUST_LIST
+--- a/sysdeps/unix/sysv/linux/wordsize-64/xstat.c
++++ b/sysdeps/unix/sysv/linux/wordsize-64/xstat.c
+@@ -23,0 +24 @@
++#include <fcntl.h>
+@@ -35 +36 @@
+-    return INLINE_SYSCALL (stat, 2, name, buf);
++    return INLINE_SYSCALL (newfstatat, 4, AT_FDCWD, name, buf, 0);
+--- a/sysdeps/unix/sysv/linux/wordsize-64/lxstat.c
++++ b/sysdeps/unix/sysv/linux/wordsize-64/lxstat.c
+@@ -23,0 +24 @@
++#include <fcntl.h>
+@@ -35 +36,2 @@
+-    return INLINE_SYSCALL (lstat, 2, name, buf);
++    return INLINE_SYSCALL (newfstatat, 4, AT_FDCWD, name, buf,
++			   AT_SYMLINK_NOFOLLOW);
+--- a/nptl/nptl-init.c
++++ b/nptl/nptl-init.c
+@@ -132 +132 @@
+-#ifdef __NR_set_robust_list
++#if 0 /* Android app processes cannot call set_robust_list.  */
+@@ -257 +257 @@
+-#ifdef __NR_set_robust_list
++#if 0 /* Android app processes cannot call set_robust_list.  */
+--- a/nptl/pthread_create.c
++++ b/nptl/pthread_create.c
+@@ -392 +392 @@
+-#ifdef __NR_set_robust_list
++#if 0 /* Android app processes cannot call set_robust_list.  */
+--- a/sysdeps/unix/sysv/linux/rename.c
++++ b/sysdeps/unix/sysv/linux/rename.c
+@@ -28,3 +28 @@
+-#if defined (__NR_rename)
+-  return INLINE_SYSCALL_CALL (rename, old, new);
+-#elif defined (__NR_renameat)
++#if defined (__NR_renameat)
+--- a/sysdeps/unix/sysv/linux/poll.c
++++ b/sysdeps/unix/sysv/linux/poll.c
+@@ -28,3 +27,0 @@
+-#ifdef __NR_poll
+-  return SYSCALL_CANCEL (poll, fds, nfds, timeout);
+-#else
+@@ -42 +38,0 @@
+-#endif
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/dup2.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/dup2.c>
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/mkdir.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/mkdir.c>
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/rmdir.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/rmdir.c>
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/unlink.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/unlink.c>
