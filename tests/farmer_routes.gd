@@ -34,10 +34,10 @@ func _run() -> void:
 	var canned := """from pathlib import Path
 Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"Angle, Small",16.00\\n')
 """
-	var second_case: Dictionary = PythonRunner.check(canned, PythonCourse.LESSONS[0])
+	var second_case: Dictionary = PythonRunner.check(canned, PythonCourse.LESSONS[PythonCourse.BASIC_STATION_COUNT])
 	_expect(not second_case.ok and second_case.output.contains("2/2"), "Result hardcoded for one dataset fails the second")
 	for index in PythonCourse.LESSONS.size():
-		if index == 0:
+		if index == PythonCourse.BASIC_STATION_COUNT:
 			track.editor.text = track.editor.text.replace('"name": row["name"],', '"name": row["name"].strip(),')
 			track.editor.text = track.editor.text.replace('"price": row["price"],', '"price": format(Decimal(row["price"]), ".2f"),')
 		else:
@@ -63,21 +63,20 @@ Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"An
 		await _capture("farmer-yard.png")
 	track.home_button.pressed.emit()
 	_expect(menu.active_route.is_empty(), "Python workbench returns to menu")
-	menu.tutorial_progress.set_value("seen", "math", true)
 	menu.math_button.pressed.emit()
-	_expect(menu.tutorial != null, "Legacy Math tutorial completion still opens the Lean course")
-	if menu.tutorial == null:
+	_expect(menu.tutorial == null and menu.active_route == "math", "Math starts directly in the proof workshop")
+	if menu.active_workshop == null:
 		quit(1)
 		return
 	await _complete_lean_course(menu)
-	_expect(menu.active_route == "math" and menu.active_workshop.editors.has("Equation"), "Math opens the existing Lean editor")
+	_expect(menu.active_workshop.editors.has("Equation"), "Completing Lean training opens the first math challenge")
 	menu.active_workshop.return_button.pressed.emit()
 	_expect(menu.active_route.is_empty(), "Math workbench returns to menu")
 	menu.python_button.pressed.emit()
 	_expect(menu.tutorial == null, "Returning players can go directly to the workshop")
 	track = menu.active_workshop
-	_expect(track.stage == 1 and track.completed.size() == 2, "Python progress survives switching tracks")
-	_expect(track.editor.text == PythonCourse.LESSONS[1].solution, "Python source draft is restored")
+	_expect(track.stage == PythonCourse.LESSONS.size() - 1 and track.completed.size() == PythonCourse.LESSONS.size(), "Python progress survives switching tracks")
+	_expect(track.editor.text == PythonCourse.LESSONS[-1].solution, "Python source draft is restored")
 	track.home_button.pressed.emit()
 	menu.python_tutorial_button.pressed.emit()
 	_expect(menu.tutorial != null and menu.tutorial.step == 0, "Tutorial can be reopened from the menu")
@@ -88,10 +87,8 @@ Path('report.csv').write_text('item_id,name,price\\nA12,Brass Nut,2.50\\nA18,"An
 	menu = current_scene
 	menu.math_button.pressed.emit()
 	_expect(menu.active_route == "math" and menu.tutorial == null, "Completed tutorial stays dismissed after reloading the menu")
+	_expect(menu.active_workshop.editors.has("Equation"), "Reopening Math restores the unlocked challenge")
 	menu.active_workshop.return_button.pressed.emit()
-	menu.math_tutorial_button.pressed.emit()
-	_expect(menu.tutorial != null and menu.tutorial.step == 0, "Graduates can reopen the course from lesson one")
-	menu.tutorial.return_button.pressed.emit()
 	if failures == 0:
 		print("%d farmer route checks passed" % checks)
 	quit(0 if failures == 0 else 1)
@@ -115,12 +112,15 @@ func _complete_python_tutorial(guide: Control) -> void:
 	guide.advance_button.pressed.emit()
 
 func _complete_lean_course(menu: Control) -> void:
-	var guide = menu.tutorial
-	_expect(not guide.skip_button.visible, "Lean course requires a checked graduation exercise")
+	var guide = menu.active_workshop
+	_expect(guide.current_file == "FirstProof" and guide.advance_button.disabled, "Fresh Math begins at the locked first Lean exercise")
+	guide._switch_stage(1)
+	_expect(guide.stage == 0, "A locked exercise cannot be selected")
 	guide.run_button.pressed.emit()
 	await _wait_for_check(guide)
-	_expect(guide.advance_button.disabled and guide.result_view.text.contains("⊢"), "Unfinished first proof displays the real Lean goal")
-	guide.editor.text = "theorem warmup : (2 : Nat) = 2 := by\n  trace_state\n  rfl"
+	_expect(guide.advance_button.disabled and guide.last_diagnostics.contains("⊢"), "Unfinished first proof displays the real Lean goal")
+	guide.editors.FirstProof.text = "theorem warmup : (2 : Nat) = 2 := by\n  trace_state\n  rfl"
+	guide._edited("FirstProof", guide.editors.FirstProof)
 	guide.run_button.pressed.emit()
 	await _wait_for_check(guide)
 	_expect(not guide.advance_button.disabled, "Writing rfl passes the first Lean exercise")
@@ -128,17 +128,15 @@ func _complete_lean_course(menu: Control) -> void:
 		quit(1)
 		return
 	guide.advance_button.pressed.emit()
-	guide.editor.text += "\n-- my draft"
+	var draft: CodeEdit = guide.editors[guide.current_file]
+	draft.text += "\n-- my draft"
+	guide._edited(guide.current_file, draft)
 	guide.return_button.pressed.emit()
-	var persisted := ConfigFile.new()
-	_expect(persisted.load("user://route_tutorials.cfg") == OK, "The Lean course progress is written to disk")
-	_expect(persisted.get_value("lean_basics", "step", -1) == 1
-		and str(persisted.get_value("lean_basics", "draft", "")).ends_with("-- my draft"), "The saved lesson and draft survive an app restart")
 	menu.math_button.pressed.emit()
-	guide = menu.tutorial
-	_expect(guide.step == 1 and guide.editor.text.ends_with("-- my draft"), "Returning to Math restores the next exercise and its draft")
+	guide = menu.active_workshop
+	_expect(guide.stage == 1 and guide.editors[guide.current_file].text.ends_with("-- my draft"), "Returning to Math restores the next exercise and its draft")
 	if OS.has_environment("FARMER_CAPTURE"):
-		await _capture("farmer-tutorial-lean.png")
+		await _capture("farmer-lean-workshop.png")
 	var solutions := [
 		"theorem keep (P : Prop) : P → P := by\n  intro h\n  trace_state\n  exact h",
 		"theorem bridge (P Q R : Prop) (h : P) (f : P → Q) (g : Q → R) : R := by\n  have middle : Q := f h\n  apply g\n  exact middle",
@@ -151,14 +149,16 @@ func _complete_lean_course(menu: Control) -> void:
 		"import TrainingTools\n\ntheorem graduate : ∀ n : Nat, start n + 1 = n + 1 := by\n  intro n\n  rw [addZero n]",
 	]
 	for index in solutions.size():
-		_expect(guide.step == index + 1, "Lean progression moves one exercise at a time")
+		_expect(guide.stage == index + 1, "Lean progression moves one exercise at a time")
 		guide.run_button.pressed.emit()
 		await _wait_for_check(guide)
 		_expect(guide.advance_button.disabled, "Unfinished Lean exercise %d cannot unlock the next" % (index + 2))
-		guide.editor.text = solutions[index]
+		var editor: CodeEdit = guide.editors[guide.current_file]
+		editor.text = solutions[index]
+		guide._edited(guide.current_file, editor)
 		guide.run_button.pressed.emit()
 		await _wait_for_check(guide)
-		_expect(not guide.advance_button.disabled, "Lean 4 accepts exercise %d: %s" % [index + 2, guide.result_view.text])
+		_expect(not guide.advance_button.disabled, "Lean 4 accepts exercise %d: %s" % [index + 2, guide.last_diagnostics])
 		if guide.advance_button.disabled:
 			quit(1)
 			return
