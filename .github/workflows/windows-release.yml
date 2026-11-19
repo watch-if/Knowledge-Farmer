@@ -66,7 +66,7 @@ jobs:
           mkdir -p "$templates" output/lean/bin output/lean/lib/lean output/python
           curl -fSL --retry 3 "$godot_base/Godot_v4.6.3-stable_export_templates.tpz" -o tools/templates.tpz
           unzip -p tools/templates.tpz templates/windows_release_x86_64.exe > "$templates/windows_release_x86_64.exe"
-          "$GODOT" --headless --path . --export-release 'Windows 64' "$PWD/output/farmer.exe"
+          "$GODOT" --headless --path . --export-release 'Windows 64' "$PWD/output/Knowledge-Farmer.exe"
 
           curl -fSL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.19.0/lean-4.19.0-windows.zip -o tools/lean.zip
           unzip -q tools/lean.zip '*/bin/lean.exe' '*/bin/*shared*.dll' '*/lib/lean/*.olean' '*/LICENSE*' -d tools
@@ -79,14 +79,14 @@ jobs:
           unzip -q tools/python.nupkg 'tools/python*.exe' 'tools/python*.dll' 'tools/vcruntime*.dll' 'tools/DLLs/*' 'tools/Lib/*' 'tools/LICENSE.txt' -d tools/python
           cp -a tools/python/tools/. output/python/
 
-          test "$(tail -c 4 output/farmer.exe)" = GDPC
+          test "$(tail -c 4 output/Knowledge-Farmer.exe)" = GDPC
           test -s output/lean/lib/lean/Init.olean
           test -s output/python/python.exe
           test -s output/python/Lib/http/server.py
           cp README.md output/开始游戏.md
           cp LICENSE assets/FONT-LICENSE.txt output/
-          (cd output && zip -qr -3 ../farmer-Windows-x64.zip farmer.exe lean python 开始游戏.md LICENSE FONT-LICENSE.txt)
-          unzip -tq farmer-Windows-x64.zip
+          (cd output && zip -qr -3 ../Knowledge-Farmer-Windows-x64.zip Knowledge-Farmer.exe lean python 开始游戏.md LICENSE FONT-LICENSE.txt)
+          unzip -tq Knowledge-Farmer-Windows-x64.zip
 
       - name: Build and sign Android APK
         shell: bash
@@ -110,23 +110,24 @@ jobs:
           trap 'rm -rf "$key_dir"' EXIT
           export FARMER_ANDROID_KEYSTORE="$key_dir/farmer.p12"
           app_id=org.watchif.farmer
-          archive=farmer-Android-arm64.apk
+          archive=Knowledge-Farmer-Android-arm64.apk
           if [[ "$ANDROID_INSTALLATION_PREVIEW" == true ]]; then
             app_id="org.watchif.farmer.preview.v0_2_${GITHUB_RUN_NUMBER}"
-            archive=farmer-Android-arm64-preview.apk
+            archive=Knowledge-Farmer-Android-arm64-preview.apk
             export FARMER_ANDROID_PASSWORD="$(openssl rand -hex 24)"
             echo "::add-mask::$FARMER_ANDROID_PASSWORD"
             keytool -genkeypair -storetype PKCS12 -keystore "$FARMER_ANDROID_KEYSTORE" \
               -storepass:env FARMER_ANDROID_PASSWORD -keyalg RSA -keysize 3072 -alias farmer \
               -validity 3650 -dname 'CN=farmer installation preview'
             sed -i "s|package/unique_name=\"org.watchif.farmer\"|package/unique_name=\"$app_id\"|g" export_presets.cfg
-            sed -i "s|package/name=\"farmer\"|package/name=\"farmer 0.2.$GITHUB_RUN_NUMBER\"|g" export_presets.cfg
           else
             printf '%s' "$FARMER_ANDROID_KEYSTORE_B64" | base64 -d > "$FARMER_ANDROID_KEYSTORE"
           fi
           tools/build-android.sh arm64-v8a "$archive"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump xmltree "$archive" --file AndroidManifest.xml |
             grep -F "package=\"$app_id\""
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump badging "$archive" |
+            grep -Fx "application-label:'Knowledge-Farmer'"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 4 "$archive"
           printf 'FARMER_ANDROID_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
 
@@ -137,12 +138,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="v0.2.$GITHUB_RUN_NUMBER"
-          windows=farmer-Windows-x64.zip
+          windows=Knowledge-Farmer-Windows-x64.zip
           android="$FARMER_ANDROID_ARCHIVE"
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json; then
             notes=tools/release-notes.md
             cat > "$notes" <<NOTES
-          下载 \`$windows\`，解压后运行 \`farmer.exe\`。请保留同目录的 Python 和 Lean 运行时文件夹。
+          下载 \`$windows\`，解压后运行 \`Knowledge-Farmer.exe\`。请保留同目录的 Python 和 Lean 运行时文件夹。
           NOTES
 
             if [[ "$ANDROID_INSTALLATION_PREVIEW" == true ]]; then
@@ -156,7 +157,7 @@ jobs:
             fi
             printf '\n源码提交：%s\n' "$GITHUB_SHA" >> "$notes"
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "farmer $tag · Windows / Android 试玩版" --notes-file "$notes" --draft --prerelease
+              --title "Knowledge-Farmer $tag · Windows / Android 试玩版" --notes-file "$notes" --draft --prerelease
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > tools/release.json
           fi
           jq -e --arg sha "$GITHUB_SHA" '.targetCommitish == $sha' tools/release.json > /dev/null

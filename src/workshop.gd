@@ -91,7 +91,7 @@ func _create_shell() -> void:
 
 	var header := Panel.new()
 	_place(header, Rect2(18, 12, 1404, 62))
-	_text("farmer · Math", Rect2(20, 6, 203, 48), 25, GOLD, header)
+	_text(str(ProjectSettings.get_setting("application/config/name")), Rect2(20, 12, 203, 36), 21, GOLD, header)
 	return_button = _button("返回选路", Rect2(1107, 10, 122, 42), _go_to_menu, header)
 	var resources := _button("", Rect2(225, 10, 493, 42), _open_catalog, header)
 	resources.tooltip_text = "查看已归档的知识"

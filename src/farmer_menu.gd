@@ -38,8 +38,9 @@ func _ready() -> void:
 	route_menu.add_child(plaque)
 
 	var nameplate := Label.new()
-	nameplate.text = "farmer"
-	nameplate.add_theme_font_size_override("font_size", 76)
+	nameplate.text = str(ProjectSettings.get_setting("application/config/name"))
+	nameplate.add_theme_font_size_override("font_size", 53)
+	nameplate.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	nameplate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	nameplate.position = Vector2(0, 27)
 	nameplate.size = Vector2(614, 105)

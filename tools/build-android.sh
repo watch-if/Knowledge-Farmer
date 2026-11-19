@@ -134,10 +134,14 @@ with ZipFile(sys.argv[2], "w", ZIP_DEFLATED, compresslevel=3) as archive:
             archive.write(path, path.relative_to(root).as_posix())
 PY
 printf '%s\n' runtime_lean419_python312_1 > "$assets/revision.txt"
-printf '%s\n' 'GNU libc 2.31 with Debian 11 maintenance and farmer Android compatibility patches' \
-  'Source: https://github.com/bminor/glibc/tree/glibc-2.31' \
-  'Debian updates: https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.31-13+deb11u11.debian.tar.xz' \
-  'Build and Android patch: https://github.com/watch-if/my-farmer/tree/main/tools' > "$assets/LICENSE.txt"
+{
+  printf '%s\n\n' 'Knowledge-Farmer'
+  cat "$project/LICENSE"
+  printf '\n%s\n' 'GNU libc 2.31 with Debian 11 maintenance and Knowledge-Farmer Android compatibility patches' \
+    'Source: https://github.com/bminor/glibc/tree/glibc-2.31' \
+    'Debian updates: https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.31-13+deb11u11.debian.tar.xz' \
+    'Build and Android patch: https://github.com/watch-if/Knowledge-Farmer/tree/main/tools'
+} > "$assets/LICENSE.txt"
 cat "$scratch/glibc-source/"{COPYING,COPYING.LIB} >> "$assets/LICENSE.txt"
 cat "$runtime/lean/LICENSE" "$runtime/python/lib/python3.12/LICENSE.txt" >> "$assets/LICENSE.txt"
 

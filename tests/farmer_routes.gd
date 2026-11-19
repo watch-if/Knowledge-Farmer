@@ -12,7 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	change_scene_to_packed(Menu)
 	await scene_changed
-	_expect(ProjectSettings.get_setting("application/config/name") == "farmer", "Game name is farmer")
+	_expect(ProjectSettings.get_setting("application/config/name") == "Knowledge-Farmer", "Game name is Knowledge-Farmer")
 	_expect(ProjectSettings.get_setting("application/run/main_scene") == "res://menu.tscn", "Launcher is main")
 	_expect(ProjectSettings.globalize_path("user://").contains("godot/app_userdata/Zeta Lab"), "Old math save path persists")
 	var menu = current_scene

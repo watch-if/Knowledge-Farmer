@@ -64,8 +64,8 @@ func _create_yard() -> void:
 
 	var heading := Panel.new()
 	_place(heading, Rect2(22, 17, 1396, 63))
-	_label("farmer · Python", Rect2(17, 8, 245, 45), 26, heading)
-	_label("发货车间", Rect2(271, 10, 290, 42), 22, heading)
+	_label(str(ProjectSettings.get_setting("application/config/name")), Rect2(17, 8, 245, 45), 23, heading)
+	_label("Python · 发货车间", Rect2(271, 10, 290, 42), 22, heading)
 	home_button = _button("返回选路", Rect2(1248, 11, 130, 40), _go_home, heading)
 
 	var order := Panel.new()
