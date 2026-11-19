@@ -13,6 +13,7 @@ from pathlib import Path
 from functools import partial
 
 FIELDS = ("item_id", "name", "price")
+BASIC_STATIONS = {"label", "normalize", "loop"}
 CASES = (
     (("A12", "  Brass Nut  ", "2.5", "2.50"), ("A18", "Angle, Small", "16", "16.00")),
     (
@@ -78,7 +79,45 @@ def execute_script(script, folder, *arguments):
     return "", result.stdout
 
 
+def check_printed_labels(script, folder, order_source, expected):
+    folder.mkdir(exist_ok=True)
+    practice = folder / script.name
+    practice.write_bytes(script.read_bytes())
+    (folder / "order.py").write_text(order_source, encoding="utf-8")
+    error, output = execute_script(practice, folder)
+    if error:
+        return error, []
+    labels = output.splitlines()
+    if labels != expected:
+        return f"脚本输出：{labels!r}\n目标输出：{expected!r}", []
+    return "", labels
+
+
+def grade_labels(lesson, script, rows, folder):
+    items = [dict(zip(FIELDS, row[:3])) for row in rows]
+    names = [item["name"].strip() for item in items]
+    if lesson == "loop":
+        error, labels = check_printed_labels(script, folder, f"rows = {items!r}", names)
+        if error:
+            return error
+    else:
+        labels = []
+        for index, (item, name) in enumerate(zip(items, names)):
+            order = f"name = {name!r}" if lesson == "label" else f"row = {item!r}"
+            error, printed = check_printed_labels(script, folder / str(index), order, [name])
+            if error:
+                return f"第 {index + 1} 张名牌未通过\n{error}"
+            labels.extend(printed)
+    with (folder / "report.csv").open("w", encoding="utf-8", newline="") as report:
+        writer = csv.writer(report)
+        writer.writerow(FIELDS)
+        writer.writerows((row[0], label, row[3]) for row, label in zip(rows, labels))
+    return ""
+
+
 def grade_case(lesson, script, rows, folder):
+    if lesson in BASIC_STATIONS:
+        return grade_labels(lesson, script, rows, folder)
     write_data(lesson, folder, rows)
     if lesson == "catalog":
         with catalog_url(folder) as url:
@@ -130,7 +169,7 @@ def main():
     lesson, filename = sys.argv[1:]
     if lesson in {"warmup_print", "warmup_edit"}:
         return grade_warmup(lesson, filename)
-    if lesson not in {"clean", "catalog"}:
+    if lesson not in BASIC_STATIONS | {"clean", "catalog"}:
         return 1
     with tempfile.TemporaryDirectory(prefix="farmer-quotes-") as temporary:
         preview = ""

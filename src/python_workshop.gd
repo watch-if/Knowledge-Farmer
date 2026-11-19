@@ -7,6 +7,7 @@ const Runner = preload("res://src/python_runner.gd")
 const Style = preload("res://src/workshop_style.gd")
 const Crate = preload("res://src/shipment_crate.gd")
 const SAVE := "user://python_workshop.cfg"
+const STATION_ORDER_VERSION := 2
 const HOPPER := Vector2(591, 314)
 const BELT := Vector2(659, 391)
 const CART := Vector2(1247, 381)
@@ -172,7 +173,7 @@ func _refresh() -> void:
 	hint_page = -1
 	hint.text = ""
 	status.text = "脚本通过验收后，把零件箱装进货车。"
-	cargo.text = "第 1 步：打开 i 看样例，再找代码里的 name 和 price 两行。" if stage == 0 and not completed.has(0) else "打开 i 看订单，或修改脚本后运行。"
+	cargo.text = lesson.first_action if not completed.has(stage) else "打开 i 看订单，或修改脚本后运行。"
 	_clear_freight()
 	_update_controls()
 	_show_editor()
@@ -270,6 +271,8 @@ func _process(_delta: float) -> void:
 	else:
 		status.text = "验收未过，货箱留在货架上。"
 		cargo.text = "打开「订单与提示」查看脚本运行详情。"
+		if stage < Course.BASIC_STATION_COUNT and not info.visible:
+			_toggle_inspection()
 	_update_controls()
 
 func _manifest(parcel: Dictionary) -> String:
@@ -321,13 +324,26 @@ func _go_home() -> void:
 func _load() -> void:
 	var file := ConfigFile.new()
 	if file.load(SAVE) == OK:
-		stage = clampi(file.get_value("project", "stage", 0), 0, Course.LESSONS.size() - 1)
+		stage = file.get_value("project", "stage", 0)
 		completed = file.get_value("project", "completed", {})
 		drafts = file.get_value("project", "drafts", {})
 		code_folded = file.get_value("project", "code_folded", false)
+		if file.get_value("project", "station_order_version", 1) < STATION_ORDER_VERSION:
+			completed = _shift_legacy_stations(completed)
+			drafts = _shift_legacy_stations(drafts)
+			if not completed.is_empty() or stage > 0:
+				stage += Course.BASIC_STATION_COUNT
+		stage = clampi(stage, 0, Course.LESSONS.size() - 1)
+
+func _shift_legacy_stations(previous: Dictionary) -> Dictionary:
+	var shifted := {}
+	for index in previous:
+		shifted[int(index) + Course.BASIC_STATION_COUNT] = previous[index]
+	return shifted
 
 func _save() -> void:
 	var file := ConfigFile.new()
+	file.set_value("project", "station_order_version", STATION_ORDER_VERSION)
 	file.set_value("project", "stage", stage)
 	file.set_value("project", "completed", completed)
 	file.set_value("project", "drafts", drafts)
