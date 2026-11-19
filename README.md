@@ -1,5 +1,7 @@
 # Knowledge-Farmer
 
+(docs/Game Icon.png)
+
 ## English summary
 
 Knowledge-Farmer is a Chinese-language learning game for Python automation and formal mathematics with Lean 4. Write scripts to process orders and web catalogs in the shipping workshop, or build and check proofs in the math workshop. Each completed challenge unlocks the next one.
