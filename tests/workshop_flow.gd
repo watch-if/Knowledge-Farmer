@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Course = preload("res://src/course.gd")
+const Basics = preload("res://src/lean_basics.gd")
 const Scene = preload("res://main.tscn")
 var game: Control
 var errors := 0
@@ -10,12 +11,30 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	var intro_save := ConfigFile.new()
+	intro_save.set_value("lean_basics", "step", 4)
+	intro_save.set_value("lean_basics", "draft", "def twice (n : Nat) : Nat := n + n")
+	intro_save.save("user://route_tutorials.cfg")
+	game = Scene.instantiate()
+	root.add_child(game)
+	await process_frame
+	_expect(game.stage == 4 and game.intro_reached == 4, "Standalone tutorial progress transfers to the workshop")
+	_expect(game.editors.Define.text == "def twice (n : Nat) : Nat := n + n", "The current tutorial draft transfers")
+	game.queue_free()
+	await process_frame
+	var old_save := ConfigFile.new()
+	old_save.set_value("state", "stage", 0)
+	old_save.set_value("state", "drafts", {"Equation": Course.LESSONS[0].starter + "-- original draft\n"})
+	old_save.save("user://workshop.cfg")
 	game = Scene.instantiate()
 	root.add_child(game)
 	await process_frame
 	if OS.get_environment("ZETA_CAPTURE") == "1":
 		await _capture("ZetaLab-Workshop.png")
-	_expect(game.stage == 0, "Fresh progress starts at chapter entry")
+	_expect(game.stage == Basics.LESSONS.size(), "Existing Math progress stays in the math chapter")
+	_expect(game.editors.Equation.text.ends_with("-- original draft\n"), "The old Math draft survives migration")
+	_expect(game.intro_reached == 4 and game.drafts.Define == "def twice (n : Nat) : Nat := n + n",
+		"Existing Math access preserves any unfinished Lean training")
 	_expect(game.advance_button.disabled, "Next lesson starts locked")
 	game._open_hints()
 	game._show_next_hint()
@@ -51,7 +70,7 @@ func _run() -> void:
 		_expect(not game.advance_button.disabled, "Successful check unlocks the next action")
 		if index < Course.LESSONS.size() - 1:
 			game._advance()
-			_expect(game.stage == index + 1, "Advance selects the next lesson")
+			_expect(game.stage == Basics.LESSONS.size() + index + 1, "Advance selects the next lesson")
 	if OS.get_environment("ZETA_CAPTURE") == "1":
 		await create_timer(0.55).timeout
 		await _capture("ZetaLab-Rewrite.png")
@@ -72,7 +91,7 @@ func _run() -> void:
 	game = Scene.instantiate()
 	root.add_child(game)
 	await process_frame
-	_expect(game.stage == 3 and game.archives.size() == 4, "Completed progress restores on restart")
+	_expect(game.stage == Basics.LESSONS.size() + 3 and game.archives.size() == 4, "Completed progress restores on restart")
 	_expect(game.closed.get("Notebook1", false), "Collapsed scratch window state restores")
 	if errors == 0:
 		print("%d workflow checks passed" % assertions)

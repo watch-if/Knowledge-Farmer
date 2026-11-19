@@ -21,7 +21,12 @@ func replay(lesson: String, update_display: Callable) -> void:
 		motion.kill()
 	carried = ""
 	motion = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	if lesson == "reuse":
+	if lesson == "training":
+		motion.tween_property(self, "hand", SECOND, 0.36)
+		motion.tween_callback(_carry.bind("已验证"))
+		motion.tween_property(self, "hand", SHELF, 0.42)
+		motion.tween_callback(update_display.bind("练习通过"))
+	elif lesson == "reuse":
 		motion.tween_property(self, "hand", SHELF, 0.32)
 		motion.tween_callback(_carry.bind("奇数和"))
 		motion.tween_property(self, "hand", FIRST, 0.42)

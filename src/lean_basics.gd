@@ -6,6 +6,7 @@ const MODULES := {
 
 const LESSONS := [
 	{
+		"file": "FirstProof", "symbol": "rfl",
 		"title": "读目标，写第一份证明",
 		"guide": "theorem 后是定理名，冒号后是要证的命题。Nat 表示自然数，:= by 开始证明，下面每行缩进两个空格。先检查草稿，trace_state 会在下方打印 ⊢ 和目标。再把占位符 sorry 换成一条能完成证明的指令。",
 		"example": "-- rfl 检查等号两边化简后是否一样\ntheorem sample : (1 : Nat) + 1 = 2 := by\n  rfl",
@@ -14,6 +15,7 @@ const LESSONS := [
 		"hints": ["⊢ 后面是当前目标 2 = 2。两边是同一个数，rfl 可以直接完成。", "保留前两行，把第三行写成两个空格加 rfl，然后再次检查。"],
 	},
 	{
+		"file": "Hypothesis", "symbol": "intro / exact",
 		"title": "把条件带进证明",
 		"guide": "P : Prop 表示 P 是一个命题。要证 P → P，先用 intro h 假设 P 成立。检查一次，在 ⊢ 上方找到 h : P，再补上最后一行，把这个已有证明交给 Lean。",
 		"example": "-- h 是证明，P 是它证明的命题\ntheorem sample (P : Prop) : P → P := by\n  intro h\n  exact h",
@@ -22,6 +24,7 @@ const LESSONS := [
 		"hints": ["exact 后写一个已经证明了当前目标的名字。这里目标是 P。", "把 sorry 换成 exact h。intro h 把目标从 P → P 变成 P。"],
 	},
 	{
+		"file": "Intermediate", "symbol": "have / apply",
 		"title": "建立中间结论",
 		"guide": "把命题的蕴含当作函数用。f : P → Q 接受 P 的证明 h，产出 f h : Q。用 have 给这个中间结论起名，再用 apply g 把目标 R 改成 g 所需的 Q，最后交上中间结论。",
 		"example": "-- 用已知条件拿到 Q\nexample (P Q : Prop) (h : P)\n    (f : P → Q) : Q := by\n  have answer : Q := f h\n  exact answer",
@@ -30,6 +33,7 @@ const LESSONS := [
 		"hints": ["第一个空缺需要 Q 的证明，f h 就是。现在再检查，可以看到 apply g 后的目标。", "第一处写 f h，最后一行写 exact middle。"],
 	},
 	{
+		"file": "Rewrite", "symbol": "rw",
 		"title": "按已知等式改写",
 		"guide": "rw [h] 用等式 h 从左往右替换目标里的表达式。这里 h : a = b，目标 f a = f b。把 f a 里的 a 换成 b，Lean 就可以完成证明。需要反向替换时写 rw [← h]。",
 		"example": "example (a b : Nat) (h : a = b) :\n    a + 1 = b + 1 := by\n  rw [h]",
@@ -38,6 +42,7 @@ const LESSONS := [
 		"hints": ["要用来替换 a 的等式叫 h。", "把 sorry 换成 rw [h]。"],
 	},
 	{
+		"file": "Define", "symbol": "def / #eval",
 		"title": "定义函数，检查类型和结果",
 		"guide": "def 用来定义可复用的值或函数。twice 接受自然数 n，返回另一个自然数。把占位符换成 n 自己加自己。检查后看下方，#check 打印类型，#eval 打印计算结果，两条命令都从行首写起。",
 		"example": "def nextNumber (n : Nat) : Nat := n + 1\n#check nextNumber -- Nat → Nat\n#eval nextNumber 7 -- 8",
@@ -46,6 +51,7 @@ const LESSONS := [
 		"hints": ["看 := 右边，这里写的是函数每次调用时要计算的表达式。", "把 sorry 换成 n + n。检查输出应包含 twice 的类型和数字 6。"],
 	},
 	{
+		"file": "EquationChain", "symbol": "calc",
 		"title": "用 calc 写一串等式",
 		"guide": "calc 把长等式拆成相邻的几步。每行 := 后交出这一小步的证明，下一行开头的 _ 接上前一行的右边。这里已有 a = b 和 b = c，补齐这两段。",
 		"example": "example (n : Nat) : n + 0 + 0 = n := by\n  calc\n    n + 0 + 0 = n + 0 := Nat.add_zero (n + 0)\n    _ = n := Nat.add_zero n",
@@ -54,6 +60,7 @@ const LESSONS := [
 		"hints": ["每行只看自己的等式，分别去参数里找同样的结论。", "第一处填 h1，第二处填 h2。calc 会把两段接起来。"],
 	},
 	{
+		"file": "Arithmetic", "symbol": "simp / omega",
 		"title": "化简之后处理算术",
 		"guide": "先用 simp only [Nat.add_zero] 反复把 x + 0 化成 x。再把剩下的自然数加减与条件交给 omega。检查草稿可看到化简后的目标。omega 擅长线性算术，平方等变量相乘通常要先用定理展开。",
 		"example": "example (n m : Nat) (h : m = n + 1) :\n    (m + 0) + 2 = n + 3 := by\n  simp only [Nat.add_zero]\n  omega",
@@ -62,6 +69,7 @@ const LESSONS := [
 		"hints": ["化简后要证 m + 1 = n + 2，已有 m = n + 1。", "把 sorry 换成 omega，Lean 会结合假设核对这个等式。"],
 	},
 	{
+		"file": "RepeatCount", "symbol": "递归",
 		"title": "用递归重复计算",
 		"guide": "给自然数写递归时分别处理 0 和 n + 1。若每轮加 2，零轮总数是 0，下一轮以前一轮的结果为起点。在第二个分支写出下一轮的总数，再看 #eval 显示的四轮结果。",
 		"example": "-- 每轮加 3\ndef countThree : Nat → Nat\n  | 0 => 0\n  | n + 1 => countThree n + 3\n#eval countThree 4 -- 12",
@@ -70,6 +78,7 @@ const LESSONS := [
 		"hints": ["n 表示前一轮的轮数。可以调用自己写的函数求那一轮的结果。", "第二个分支填 doubleCount n + 2。四轮计算应得到 8。"],
 	},
 	{
+		"file": "Induction", "symbol": "induction",
 		"title": "用归纳假设证明下一项",
 		"guide": "induction 把自然数证明分为 0 和后继两种情况。succ n ih 给你 n 和在 n 时已经成立的结论 ih。先看 calc 如何展开 0 + (n + 1)，再在第二行等式里用 ih 改写 0 + n。",
 		"example": "example (n : Nat) : 0 + n = n := by\n  induction n with\n  | zero => rfl\n  | succ n ih =>\n    change (0 + n) + 1 = n + 1\n    rw [ih]",
@@ -78,6 +87,7 @@ const LESSONS := [
 		"hints": ["检查草稿时可临时把最后的 by sorry 改成三行：by、缩进的 trace_state、缩进的 sorry，观察 ih。", "把最后的 by sorry 改成 by rw [ih]。ih 的类型是 0 + n = n。"],
 	},
 	{
+		"file": "ImportProof", "symbol": "import",
 		"title": "毕业演练 · 导入并复用定理",
 		"guide": "import 放在文件最开头，用来读取另一个 Lean 文件的定义和定理。右边是工坊提供的 TrainingTools 文件。导入它，用 intro 处理「对所有 n」，再调用其中的定理改写左边。检查通过就能进入 Math 正课。",
 		"example": "-- TrainingTools.lean\n" + MODULES.TrainingTools,

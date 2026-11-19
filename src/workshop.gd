@@ -4,15 +4,20 @@ signal return_to_menu
 
 const Style = preload("res://src/workshop_style.gd")
 const Course = preload("res://src/course.gd")
+const LeanBasics = preload("res://src/lean_basics.gd")
 const Checker = preload("res://src/lean_checker.gd")
 const Arm = preload("res://src/arm.gd")
 const SAVE := "user://workshop.cfg"
+const LESSONS := LeanBasics.LESSONS + Course.LESSONS
 const PAPER := Color("#f8e1b6")
 const INK := Color("#342015")
 const GOLD := Color("#eac084")
 
 var arm: Control
 var stage := 0
+var intro_count := LeanBasics.LESSONS.size()
+var intro_reached := 0
+var legacy_math_access := false
 var drafts := {}
 var archives := {}
 var closed := {}
@@ -48,6 +53,8 @@ func _ready() -> void:
 	theme = Style.make()
 	_create_shell()
 	_refresh()
+	if stage < intro_count and stage == intro_reached:
+		_open_hints()
 	set_process(false)
 
 func _place(node: Control, bounds: Rect2, parent: Control = self) -> void:
@@ -55,13 +62,16 @@ func _place(node: Control, bounds: Rect2, parent: Control = self) -> void:
 	node.position = bounds.position
 	node.size = bounds.size
 
-func _text(value: String, bounds: Rect2, pixels: int, color: Color = GOLD, parent: Control = self) -> Label:
+func _text(value: String, bounds: Rect2, pixels: int, color: Color = GOLD,
+		parent: Control = self, wrap: bool = false) -> Label:
 	var label := Label.new()
-	label.text = value
+	if wrap:
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_font_size_override("font_size", pixels)
 	label.add_theme_color_override("font_color", color)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_place(label, bounds, parent)
+	label.text = value
 	return label
 
 func _button(value: String, bounds: Rect2, action: Callable, parent: Control = self) -> Button:
@@ -143,14 +153,17 @@ func _create_shell() -> void:
 	add_child(save_timer)
 
 func _refresh() -> void:
-	var lesson: Dictionary = Course.LESSONS[stage]
+	var lesson: Dictionary = LESSONS[stage]
 	var file: String = lesson.file
 	if not drafts.has(file):
 		drafts[file] = lesson.starter
 	if current_file.is_empty():
 		current_file = file
-	screen_goal.text = lesson.title
-	if stage == 0 and not archives.has(file):
+	screen_goal.text = ("Lean %02d / %02d · %s" % [stage + 1, intro_count, lesson.title]
+		if stage < intro_count else lesson.title)
+	if stage < intro_count:
+		current_status("先读右侧任务，再编辑草稿并检查。按 i 可打开提示。")
+	elif stage == intro_count and not archives.has(file):
 		current_status("第 1 步：把第二行的 sorry 改成 rfl，再点「检查 Lean」。")
 	else:
 		current_status("打开任务提示 i，或编辑 %s.lean 后检查。" % file)
@@ -159,16 +172,25 @@ func _refresh() -> void:
 	_prepare_machine()
 
 func _prepare_machine() -> void:
-	var lesson: Dictionary = Course.LESSONS[stage]
+	if stage < intro_count:
+		device_title.text = "Lean 练习台"
+		slot_one.text = "草稿"
+		slot_two.text = "检验"
+		for slot in rewrite_slots:
+			slot.hide()
+		_set_display(LESSONS[stage].symbol)
+		return
+	var index := stage - intro_count
+	var lesson: Dictionary = LESSONS[stage]
 	device_title.text = lesson.action
 	for slot in rewrite_slots:
 		slot.visible = lesson.id == "reuse"
-	slot_one.text = ["左边", "奇数项", "零的情形", "oddTotal n"][stage]
-	slot_two.text = ["右边", "部分和", "后继的情形", "oddTotal m"][stage]
-	_set_display(["2 + 3   =   ?", "1 + 3 + 5 + 7", "oddTotal n = n²", "oddTotal n − oddTotal m"][stage])
+	slot_one.text = ["左边", "奇数项", "零的情形", "oddTotal n"][index]
+	slot_two.text = ["右边", "部分和", "后继的情形", "oddTotal m"][index]
+	_set_display(["2 + 3   =   ?", "1 + 3 + 5 + 7", "oddTotal n = n²", "oddTotal n − oddTotal m"][index])
 
 func _locate_rewrite(index: int) -> void:
-	var filename: String = Course.LESSONS[stage].file
+	var filename: String = LESSONS[stage].file
 	if not editors.has(filename):
 		_toggle_file(filename)
 	var edit: CodeEdit = editors[filename]
@@ -184,18 +206,26 @@ func _locate_rewrite(index: int) -> void:
 	current_status("当前草稿还没有这一项的改写。打开 i 可查看提示。")
 
 func _update_progress() -> void:
-	var count := archives.size()
-	var definitions := 1 if archives.has("Accumulation") else 0
-	var chapter := 1 if count == Course.LESSONS.size() else 0
-	resource_label.text = "定义  %d     ·     定理  %d     ·     章节印章  %d" % [definitions, count - definitions, chapter]
 	var catalog: Array[String] = []
 	for lesson in Course.LESSONS:
 		if archives.has(lesson.file):
 			catalog.append(lesson.symbol)
+	var count := catalog.size()
+	var definitions := 1 if archives.has("Accumulation") else 0
+	var chapter := 1 if count == Course.LESSONS.size() else 0
+	resource_label.text = ("Lean 入门  %d / %d" % [intro_reached, intro_count] if stage < intro_count else
+		"定义  %d     ·     定理  %d     ·     章节印章  %d" % [definitions, count - definitions, chapter])
 	for index in shelf.size():
 		shelf[index].text = catalog[index] if index < catalog.size() else "—"
-	advance_button.disabled = not archives.has(Course.LESSONS[stage].file)
-	advance_button.text = "知识树 ⌃" if stage == Course.LESSONS.size() - 1 else "下一关 →"
+	advance_button.disabled = not _level_complete(stage)
+	advance_button.text = "知识树 ⌃" if stage == LESSONS.size() - 1 else "下一关 →"
+
+func _level_complete(index: int) -> bool:
+	return index < intro_reached or archives.has(LESSONS[index].file)
+
+func _level_available(index: int) -> bool:
+	return (index == 0 or (index == intro_count and legacy_math_access)
+		or (index > 0 and index < LESSONS.size() and _level_complete(index - 1)))
 
 func _render_files() -> void:
 	for filename in editors:
@@ -302,7 +332,7 @@ func _toggle_file(filename: String) -> void:
 	if not closed[filename]:
 		current_file = filename
 	elif current_file == filename:
-		current_file = Course.LESSONS[stage].file
+		current_file = LESSONS[stage].file
 	_render_files()
 	_save()
 
@@ -317,26 +347,30 @@ func _new_file() -> void:
 	_save()
 
 func _advance() -> void:
-	if not archives.has(Course.LESSONS[stage].file):
+	if worker != null or not _level_complete(stage):
 		return
-	if stage == Course.LESSONS.size() - 1:
+	if stage == LESSONS.size() - 1:
 		_open_tree()
 		return
 	_switch_stage(stage + 1)
 
 func _switch_stage(index: int) -> void:
+	if worker != null or not _level_available(index):
+		return
 	if index == stage:
 		_close_overlay()
 		return
 	_close_overlay()
 	arm.halt()
-	closed[Course.LESSONS[stage].file] = true
+	closed[LESSONS[stage].file] = true
 	stage = index
-	current_file = Course.LESSONS[stage].file
+	current_file = LESSONS[stage].file
 	closed[current_file] = false
 	hint_index = 0
 	showing_diagram = false
 	_refresh()
+	if stage < intro_count and not _level_complete(stage):
+		_open_hints()
 	_save()
 
 var last_diagnostics := "检查后，Lean 4 的诊断会出现在这里。"
@@ -351,12 +385,14 @@ func _run_file(filename: String) -> void:
 	if worker != null or not drafts.has(filename):
 		return
 	checked_file = filename
-	checked_stage = stage if filename == Course.LESSONS[stage].file else -1
-	var lesson: Dictionary = Course.LESSONS[checked_stage] if checked_stage >= 0 else {}
+	checked_stage = stage if filename == LESSONS[stage].file else -1
+	var lesson: Dictionary = LESSONS[checked_stage] if checked_stage >= 0 else {}
 	checked_source = String(drafts[filename])
 	var executable := Checker.tool()
 	worker = Thread.new()
 	var modules := archives.duplicate()
+	if intro_reached >= intro_count - 1:
+		modules.merge(LeanBasics.MODULES)
 	for draft in drafts:
 		if draft.begins_with("Notebook") and draft != filename:
 			modules[draft] = drafts[draft]
@@ -382,16 +418,21 @@ func _process(_delta: float) -> void:
 		last_diagnostics = "Lean 检查通过。"
 	if not result.ok:
 		current_status("未通过 · 可查看 Lean 诊断或分级提示。")
+		if checked_stage >= 0 and checked_stage < intro_count:
+			_show_diagnostics()
 		return
 	if checked_stage < 0:
 		current_status("%s.lean 检查通过。" % checked_file)
 		return
 	archives[checked_file] = checked_source
+	if checked_stage < intro_count:
+		intro_reached = maxi(intro_reached, checked_stage + 1)
 	_update_progress()
 	if checked_stage == stage:
+		_close_overlay()
 		_prepare_machine()
-		arm.replay(Course.LESSONS[stage].id, _set_display)
-	current_status("已验证并归档 · " + Course.LESSONS[checked_stage].symbol)
+		arm.replay(LESSONS[stage].get("id", "training"), _set_display)
+	current_status("已验证并归档 · " + LESSONS[checked_stage].symbol)
 	_save()
 
 func _go_to_menu() -> void:
@@ -405,11 +446,12 @@ func _set_display(value: String) -> void:
 func current_status(message: String) -> void:
 	screen_status.text = message
 
-func _canvas(title: String, bounds: Rect2) -> Panel:
+func _canvas(title: String, bounds: Rect2, modal: bool = true) -> Panel:
 	_close_overlay()
-	modal_input_shield = ColorRect.new()
-	modal_input_shield.color = Color(0.05, 0.03, 0.02, 0.59)
-	_place(modal_input_shield, Rect2(0, 74, 1440, 736))
+	if modal:
+		modal_input_shield = ColorRect.new()
+		modal_input_shield.color = Color(0.05, 0.03, 0.02, 0.59)
+		_place(modal_input_shield, Rect2(0, 74, 1440, 736))
 	overlay = Panel.new()
 	_place(overlay, bounds)
 	_text(title, Rect2(25, 13, bounds.size.x - 108, 45), 28, GOLD, overlay)
@@ -422,8 +464,10 @@ func _close_overlay() -> void:
 	if is_instance_valid(overlay):
 		overlay.hide()
 		overlay.queue_free()
+	if is_instance_valid(modal_input_shield):
 		modal_input_shield.hide()
 		modal_input_shield.queue_free()
+	modal_input_shield = null
 	overlay = null
 	overlay_kind = ""
 
@@ -434,19 +478,37 @@ func _open_hints() -> void:
 	_render_hints()
 
 func _render_hints() -> void:
+	if stage < intro_count:
+		_render_intro_hints()
+		return
 	var panel := _canvas("任务与分级提示", Rect2(639, 140, 667, 526))
 	overlay_kind = "hints"
-	var lesson: Dictionary = Course.LESSONS[stage]
-	var brief := _text(lesson.task, Rect2(26, 70, 613, 69), 18, GOLD, panel)
-	brief.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var lesson: Dictionary = LESSONS[stage]
+	_text(lesson.task, Rect2(26, 70, 613, 69), 18, GOLD, panel, true)
 	_text(lesson.goal, Rect2(26, 150, 613, 87), 17, Color("#f5efdc"), panel)
-	var hint := _text("提示 %d   %s" % [hint_index + 1, lesson.hints[hint_index]], Rect2(26, 250, 613, 82), 16, GOLD, panel)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_text("提示 %d   %s" % [hint_index + 1, lesson.hints[hint_index]], Rect2(26, 250, 613, 82), 16, GOLD, panel, true)
 	var next := _button("下一层提示", Rect2(26, 337, 149, 38), _show_next_hint, panel)
 	next.disabled = hint_index >= lesson.hints.size() - 1
 	_button("图解", Rect2(187, 337, 110, 38), _toggle_diagram, panel)
 	if showing_diagram:
 		_text(lesson.diagram, Rect2(26, 391, 610, 105), 18, GOLD, panel)
+
+func _render_intro_hints() -> void:
+	var panel := _canvas("练习任务 · " + LESSONS[stage].symbol, Rect2(616, 135, 738, 525), false)
+	overlay_kind = "hints"
+	var lesson: Dictionary = LESSONS[stage]
+	_text(lesson.guide, Rect2(25, 66, 686, 112), 18, GOLD, panel, true)
+	_text("参考例子", Rect2(25, 184, 670, 24), 16, GOLD, panel)
+	var example := TextEdit.new()
+	example.editable = false
+	example.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	example.text = lesson.example
+	example.add_theme_color_override("font_readonly_color", Color("#efd9b3"))
+	example.add_theme_font_size_override("font_size", 17)
+	_place(example, Rect2(25, 216, 686, 178), panel)
+	_text("" if hint_index == 0 else lesson.hints[hint_index - 1], Rect2(25, 405, 686, 56), 16, GOLD, panel, true)
+	var next := _button("看一步提示", Rect2(25, 470, 147, 34), _show_next_hint, panel)
+	next.disabled = hint_index == lesson.hints.size()
 
 func _show_next_hint() -> void:
 	hint_index += 1
@@ -469,14 +531,23 @@ func _open_catalog() -> void:
 	_text("归档模块可以用 import 在后续 Lean 文件中调用。", Rect2(26, 367, 570, 38), 16, GOLD, panel)
 
 func _open_diagnostics() -> void:
-	var panel := _canvas("Lean 4 诊断", Rect2(530, 139, 806, 532))
+	if overlay_kind == "diagnostics":
+		_close_overlay()
+		return
+	_show_diagnostics()
+
+func _show_diagnostics() -> void:
+	var intro := stage < intro_count
+	var bounds := Rect2(616, 135, 738, 525) if intro else Rect2(530, 139, 806, 532)
+	var panel := _canvas("Lean 4 诊断", bounds, not intro)
 	overlay_kind = "diagnostics"
 	var output := TextEdit.new()
 	output.editable = false
 	output.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	output.text = last_diagnostics
+	output.add_theme_color_override("font_readonly_color", Color("#efd9b3"))
 	output.add_theme_font_size_override("font_size", 16)
-	_place(output, Rect2(22, 70, 762, 438), panel)
+	_place(output, Rect2(22, 70, bounds.size.x - 44, bounds.size.y - 94), panel)
 
 func _open_tree() -> void:
 	if overlay_kind == "tree":
@@ -488,6 +559,11 @@ func _open_tree() -> void:
 func _render_tree() -> void:
 	var panel := _canvas("知识树", Rect2(25, 90, 1390, 691))
 	overlay_kind = "tree"
+	_button("Lean 4 入门", Rect2(943, 14, 163, 37), _skill_selected.bind(0), panel)
+	_button("数学章节", Rect2(1119, 14, 163, 37), _skill_selected.bind(intro_count), panel)
+	if active_skill < intro_count:
+		_render_intro_tree(panel)
+		return
 	_tree_path(panel, PackedVector2Array([Vector2(147, 150), Vector2(147, 323)]))
 	_tree_path(panel, PackedVector2Array([Vector2(272, 323), Vector2(282, 323),
 		Vector2(282, 150), Vector2(303, 150)]))
@@ -503,24 +579,39 @@ func _render_tree() -> void:
 		_text(branch[0], Rect2(x, 78, 255, 38), 21, GOLD, panel)
 		for row in range(1, branch.size()):
 			var name: String = branch[row]
-			var tile := _button(name, Rect2(x, 126 + (row - 1) * 58, 251, 48), _skill_selected.bind(row - 1), panel)
+			var index := intro_count + row - 1
+			var tile := _button(name, Rect2(x, 126 + (row - 1) * 58, 251, 48), _skill_selected.bind(index), panel)
 			if column == 0:
-				var file: String = Course.LESSONS[row - 1].file
-				if archives.has(file):
+				if _level_complete(index):
 					tile.text = "✓   " + name
-				elif row - 1 == stage:
+				elif index == stage:
 					tile.text = "◆   " + name
 			else:
 				tile.disabled = true
 				tile.tooltip_text = "后续章节"
-	var lesson: Dictionary = Course.LESSONS[active_skill]
+	var lesson: Dictionary = LESSONS[active_skill]
 	_text(lesson.title + "  ·  " + lesson.skill, Rect2(25, 412, 1140, 44), 25, GOLD, panel)
 	_text(lesson.task, Rect2(25, 466, 1300, 38), 18, GOLD, panel)
 	var enter := _button("进入关卡", Rect2(25, 537, 175, 43), _switch_stage.bind(active_skill), panel)
-	enter.disabled = active_skill > 0 and not archives.has(Course.LESSONS[active_skill - 1].file)
+	enter.disabled = not _level_available(active_skill)
 	if enter.disabled:
 		_text("先完成前置关卡。", Rect2(221, 545, 400, 30), 17, GOLD, panel)
 	_text("终章目标：复推 11/12 与 7/8 预印本中的关键估计。", Rect2(25, 623, 1300, 35), 16, GOLD, panel)
+
+func _render_intro_tree(panel: Panel) -> void:
+	for index in intro_count:
+		var x := 25 + (index % 2) * 658
+		var y := 85 + floori(index / 2.0) * 65
+		var mark := "✓ " if _level_complete(index) else ("◆ " if _level_available(index) else "   ")
+		var caption := "%s%02d  %s" % [mark, index + 1, LESSONS[index].title]
+		_button(caption, Rect2(x, y, 633, 49), _skill_selected.bind(index), panel)
+	var lesson: Dictionary = LESSONS[active_skill]
+	_text(lesson.title + "  ·  " + lesson.symbol, Rect2(25, 424, 1300, 42), 24, GOLD, panel)
+	_text(lesson.guide, Rect2(25, 478, 1315, 68), 18, GOLD, panel, true)
+	var enter := _button("进入关卡", Rect2(25, 566, 175, 43), _switch_stage.bind(active_skill), panel)
+	enter.disabled = not _level_available(active_skill)
+	if enter.disabled:
+		_text("先完成前一关。", Rect2(221, 574, 400, 30), 17, GOLD, panel)
 
 func _tree_path(panel: Panel, points: PackedVector2Array) -> void:
 	var route := Line2D.new()
@@ -537,17 +628,39 @@ func _skill_selected(index: int) -> void:
 func _load() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE) != OK:
+		_load_legacy_tutorial()
 		return
-	stage = clampi(cfg.get_value("state", "stage", 0), 0, Course.LESSONS.size() - 1)
 	drafts = cfg.get_value("state", "drafts", {})
 	archives = cfg.get_value("state", "archives", {})
 	closed = cfg.get_value("state", "closed", {})
 	file_positions = cfg.get_value("state", "positions", {})
 	carets = cfg.get_value("state", "carets", {})
+	if cfg.has_section_key("state", "intro_reached"):
+		stage = clampi(int(cfg.get_value("state", "stage", 0)), 0, LESSONS.size() - 1)
+		intro_reached = clampi(int(cfg.get_value("state", "intro_reached", 0)), 0, intro_count)
+		legacy_math_access = bool(cfg.get_value("state", "legacy_math_access", false))
+	else:
+		_load_legacy_tutorial()
+		stage = intro_count + clampi(int(cfg.get_value("state", "stage", 0)), 0, Course.LESSONS.size() - 1)
+		legacy_math_access = true
+
+func _load_legacy_tutorial() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load("user://route_tutorials.cfg") != OK:
+		return
+	if cfg.get_value("lean_basics", "completed", false):
+		stage = intro_count
+		intro_reached = intro_count
+		return
+	stage = clampi(int(cfg.get_value("lean_basics", "step", 0)), 0, intro_count - 1)
+	intro_reached = stage
+	if cfg.has_section_key("lean_basics", "draft"):
+		drafts[LESSONS[stage].file] = cfg.get_value("lean_basics", "draft")
 
 func _save() -> void:
 	var cfg := ConfigFile.new()
-	var state := {"stage": stage, "drafts": drafts, "archives": archives, "closed": closed, "positions": file_positions, "carets": carets}
+	var state := {"stage": stage, "intro_reached": intro_reached, "legacy_math_access": legacy_math_access,
+		"drafts": drafts, "archives": archives, "closed": closed, "positions": file_positions, "carets": carets}
 	for key in state:
 		cfg.set_value("state", key, state[key])
 	var temp := SAVE + ".tmp"
@@ -555,7 +668,7 @@ func _save() -> void:
 		current_status("保存进度失败，请检查本地目录权限。")
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST and is_instance_valid(save_timer):
+	if what in [NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_PAUSED] and is_instance_valid(save_timer):
 		_save()
 	if what == NOTIFICATION_PREDELETE and worker != null and worker.is_started():
 		worker.wait_to_finish()
