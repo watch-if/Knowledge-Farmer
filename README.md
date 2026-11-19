@@ -1,13 +1,27 @@
 # Knowledge-Farmer
 
-Knowledge-Farmer 是一款中文闯关学习游戏，用动手写代码来练习 **Python 自动化** 和 **Lean 4 数学证明**。打开游戏 **Knowledge Farmer** 后，选择 Python 或 Math。游戏会运行你写的脚本或检查你写的证明，通过后解锁下一关。每条路线独立保存草稿和进度。
+## English summary
+
+Knowledge-Farmer is a Chinese-language learning game for Python automation and formal mathematics with Lean 4. Write scripts to process orders and web catalogs in the shipping workshop, or build and check proofs in the math workshop. Each completed challenge unlocks the next one.
 
 ## 项目用途
+
+Knowledge-Farmer 是一款中文闯关学习游戏，用动手写代码来练习 **Python 自动化** 和 **Lean 4 数学证明**。打开游戏 **Knowledge Farmer** 后，选择 Python 或 Math。游戏会运行你写的脚本或检查你写的证明，通过后解锁下一关。每条路线独立保存草稿和进度。
 
 - **Python · 发货车间**。从打印名牌、变量、字典和 `for` 循环起步，再用 Python 清理 CSV 报价、从练习网页提取商品数据。脚本通过两批订单的验收后，可以操作输送带装车。
 - **Math · 证明工坊**。先过十个 Lean 4 入门关，练习读目标、改写、定义、递归、归纳和导入。接下来用已学工具推导奇数和等数学结论。按 `i` 看例子和分步提示，按 `⌃` 打开知识树，复习已解锁的关卡。
 
 在证明工坊里，可以用 `+` 新建 Lean 文件，并在另一个草稿中用 `import Notebook1` 引用它。窗口标题可以拖动，按 `−` 收起后，点文件牌即可恢复。
+
+## 游戏截图
+
+![Python editor beside the shipping workshop conveyor](docs/screenshots/python-workshop.webp)
+
+*The first Python challenge prints a cargo label from an order. After the script passes inspection, the crates are ready to load.*
+
+![Lean 4 editor beside the first proof task and reference example](docs/screenshots/lean-workshop.webp)
+
+*The first Lean 4 challenge puts the editable proof on the left and a worked example on the right.*
 
 ## 支持系统
 
