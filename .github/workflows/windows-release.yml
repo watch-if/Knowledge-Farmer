@@ -127,7 +127,7 @@ jobs:
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump xmltree "$archive" --file AndroidManifest.xml |
             grep -F "package=\"$app_id\""
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump badging "$archive" |
-            grep -Fx "application-label:'Knowledge-Farmer'"
+            grep -Fx "application-label:'Knowledge Farmer'"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 4 "$archive"
           printf 'FARMER_ANDROID_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
 

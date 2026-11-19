@@ -1,6 +1,6 @@
 # Knowledge-Farmer
 
-Knowledge-Farmer 是一款中文闯关学习游戏，用动手写代码来练习 **Python 自动化** 和 **Lean 4 数学证明**。开始时选择 Python 或 Math。游戏会运行你写的脚本或检查你写的证明，通过后解锁下一关。每条路线独立保存草稿和进度。
+Knowledge-Farmer 是一款中文闯关学习游戏，用动手写代码来练习 **Python 自动化** 和 **Lean 4 数学证明**。打开游戏 **Knowledge Farmer** 后，选择 Python 或 Math。游戏会运行你写的脚本或检查你写的证明，通过后解锁下一关。每条路线独立保存草稿和进度。
 
 ## 项目用途
 
