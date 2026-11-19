@@ -17,25 +17,19 @@ mkdir -p "$cache" "$(dirname "$output")"
 case "$abi" in
   arm64-v8a)
     preset='Android ARM64'
-    architecture=arm64
     triple=aarch64-linux-gnu
     loader=ld-linux-aarch64.so.1
     python_platform=aarch64
     lean_package=lean-4.19.0-linux_aarch64
     lean_digest=f19136d56bc3a5dc9af21edc88e64256c192d3f42c3e872dbeb30e392d7ad206
-    libc_digest=baaa9aa184e2f21738c5819055e6740cc5b22f198e3f416e33f82b40ff6933d8
-    crt_digest=28d478134722dcd4b0bd2045a199301d18713bf95947b9fce66634e7aeacab2e
     ;;
   x86_64)
     preset='Android Emulator'
-    architecture=amd64
     triple=x86_64-linux-gnu
     loader=ld-linux-x86-64.so.2
     python_platform=x86_64
     lean_package=lean-4.19.0-linux
     lean_digest=6fe3ce97a58f44e2b3567d455b994eacec5bfe9ae7774f2a573444480ba813fe
-    libc_digest=05f7264da867b37f4c5ce49266b558ea1e81e05a9464f623152fca70f3550282
-    crt_digest=e7f7b45d9c5cfcf37609f0b6efd3c645272c812144703af89dfd32218fcb0fd3
     ;;
   *)
     printf 'Unsupported Android ABI: %s\n' "$abi" >&2
@@ -81,29 +75,21 @@ checksum "$(cut -d' ' -f1 "$cache/$python_name.sha256")" "$cache/$python_name"
 tar -xzf "$cache/$python_name" -C "$scratch"
 python="$scratch/python"
 
-libc="$cache/libc6_2.31-13+deb11u11_$architecture.deb"
-download "https://deb.debian.org/debian/pool/main/g/glibc/$(basename "$libc")" "$libc"
-checksum "$libc_digest" "$libc"
-dpkg-deb -x "$libc" "$scratch/libc"
-system_lib="$scratch/libc/lib/$triple"
-
-crt_archive="$cache/libc6-dev_2.31-13+deb11u11_$architecture.deb"
-download "https://deb.debian.org/debian/pool/main/g/glibc/$(basename "$crt_archive")" "$crt_archive"
-checksum "$crt_digest" "$crt_archive"
-dpkg-deb -x "$crt_archive" "$scratch/libcdev"
-crt="$scratch/libcdev/usr/lib/$triple"
+"$project/tools/build-android-glibc.sh" "$triple" "$cache" "$scratch"
+glibc="$scratch/glibc"
+crt="$glibc/csu"
 
 native="$scratch/inject/lib/$abi"
 runtime="$scratch/runtime"
 copy="$scratch/project"
 mkdir -p "$native" "$runtime/lean/lib/lean" "$runtime/python/lib" "$copy"
-cp -L "$system_lib/$loader" "$native/libfarmer_loader.so"
-cp "$system_lib/libc.so.6" "$native/libfarmer_c.so"
-cp "$system_lib/libm.so.6" "$native/libfarmer_m.so"
-cp "$system_lib/libdl.so.2" "$native/libfarmer_dl.so"
-cp "$system_lib/libpthread.so.0" "$native/libfarmer_pthread.so"
-cp "$system_lib/librt.so.1" "$native/libfarmer_rt.so"
-cp "$system_lib/libutil.so.1" "$native/libfarmer_util.so"
+cp "$glibc/elf/ld.so" "$native/libfarmer_loader.so"
+cp "$glibc/libc.so" "$native/libfarmer_c.so"
+cp "$glibc/math/libm.so" "$native/libfarmer_m.so"
+cp "$glibc/dlfcn/libdl.so" "$native/libfarmer_dl.so"
+cp "$glibc/nptl/libpthread.so" "$native/libfarmer_pthread.so"
+cp "$glibc/rt/librt.so" "$native/libfarmer_rt.so"
+cp "$glibc/login/libutil.so" "$native/libfarmer_util.so"
 
 cp "$lean/bin/lean" "$native/libfarmer_lean.so"
 cp "$lean"/lib/lean/lib{Init_shared,leanshared_1,leanshared}.so "$native/"
@@ -115,7 +101,7 @@ cp "$python/lib/libpython3.12.so.1.0" "$native/libfarmer_libpython.so"
 "$toolchain/clang" --target="$triple" -fPIE -Os -c "$project/tools/python-entry.c" -o "$scratch/python-entry.o"
 "$toolchain/ld.lld" -pie -z noexecstack -z max-page-size=65536 --dynamic-linker "/lib/$loader" \
   --allow-shlib-undefined -o "$native/libfarmer_python.so" "$crt/Scrt1.o" "$crt/crti.o" "$scratch/python-entry.o" \
-  "$native/libfarmer_libpython.so" "$system_lib/libc.so.6" "$crt/libc_nonshared.a" "$crt/crtn.o"
+  "$native/libfarmer_libpython.so" "$glibc/libc.so" "$glibc/libc_nonshared.a" "$crt/crtn.o"
 readelf -W -l "$native/libfarmer_python.so" | grep -E 'GNU_STACK +.* RW +0'
 cp -R "$python/lib/python3.12" "$runtime/python/lib/"
 find "$runtime/python" -type d \( -name __pycache__ -o -name site-packages \) -prune -exec rm -rf {} +
@@ -147,8 +133,11 @@ with ZipFile(sys.argv[2], "w", ZIP_DEFLATED, compresslevel=3) as archive:
             archive.write(path, path.relative_to(root).as_posix())
 PY
 printf '%s\n' runtime_lean419_python312_1 > "$assets/revision.txt"
-printf '%s\n' 'GNU libc 2.31-13+deb11u11' 'Source: https://deb.debian.org/debian/pool/main/g/glibc/' > "$assets/LICENSE.txt"
-cat "$scratch/libc/usr/share/doc/libc6/copyright" >> "$assets/LICENSE.txt"
+printf '%s\n' 'GNU libc 2.31 with Debian 11 maintenance and farmer Android compatibility patches' \
+  'Source: https://github.com/bminor/glibc/tree/glibc-2.31' \
+  'Debian updates: https://deb.debian.org/debian/pool/main/g/glibc/glibc_2.31-13+deb11u11.debian.tar.xz' \
+  'Build and Android patch: https://github.com/watch-if/my-farmer/tree/main/tools' > "$assets/LICENSE.txt"
+cat "$scratch/glibc-source/"{COPYING,COPYING.LIB} >> "$assets/LICENSE.txt"
 cat "$runtime/lean/LICENSE" "$runtime/python/lib/python3.12/LICENSE.txt" >> "$assets/LICENSE.txt"
 
 export XDG_CONFIG_HOME="$scratch/config" XDG_CACHE_HOME="$scratch/cache" XDG_DATA_HOME="$scratch/data"
