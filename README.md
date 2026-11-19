@@ -1,6 +1,6 @@
 # Knowledge-Farmer
 
-(docs/Game Icon.png)
+![](docs/Game Icon.png)
 
 ## English summary
 
