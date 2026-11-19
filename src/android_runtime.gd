@@ -110,6 +110,8 @@ static func _execute_mobile(program: String, arguments: PackedStringArray, outpu
 		"PYTHONNOUSERSITE": "1",
 		# Lean's libuv can use epoll with Android's app syscall policy.
 		"UV_USE_IO_URING": "0",
+		# A single NUMA node avoids Linux-specific topology probing in Lean.
+		"MIMALLOC_USE_NUMA_NODES": "1",
 		"FARMER_ANDROID_PYTHON_ARGV": JSON.stringify(Array(command_prefix(native_dir, "python"))),
 	}
 	var previous := {}

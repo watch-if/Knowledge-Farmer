@@ -42,8 +42,18 @@ if ! CC="$triple-gcc" CFLAGS='-O2 -g0 -Wno-error=incompatible-pointer-types -Wno
   tail -25 configure.log
   exit 1
 fi
-if ! make -j"$(nproc)" > build.log 2>&1; then
+jobs=$(nproc)
+build_runtime_libraries() {
+  make -j"$jobs" lib || return
+  # Build NPTL before librt so libpthread gets its initialization flags.
+  for library in math dlfcn nptl rt login; do
+    make -j"$jobs" "$library/others" || return
+  done
+}
+if ! build_runtime_libraries > build.log 2>&1; then
   awk '/: error:|undefined reference|No rule to make/ { print "::error title=Android glibc build::" $0; if (++found == 8) exit }' build.log
   tail -25 build.log
   exit 1
 fi
+# INITFIRST is required to initialize pthread state before other libraries.
+readelf -d "$build/nptl/libpthread.so" | grep 'FLAGS_1.*INITFIRST'

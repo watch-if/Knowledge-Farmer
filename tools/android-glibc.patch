@@ -49,3 +49,34 @@
 @@ -392 +392 @@
 -#ifdef __NR_set_robust_list
 +#if 0 /* Android app processes cannot call set_robust_list.  */
+--- a/sysdeps/unix/sysv/linux/rename.c
++++ b/sysdeps/unix/sysv/linux/rename.c
+@@ -28,3 +28 @@
+-#if defined (__NR_rename)
+-  return INLINE_SYSCALL_CALL (rename, old, new);
+-#elif defined (__NR_renameat)
++#if defined (__NR_renameat)
+--- a/sysdeps/unix/sysv/linux/poll.c
++++ b/sysdeps/unix/sysv/linux/poll.c
+@@ -28,3 +27,0 @@
+-#ifdef __NR_poll
+-  return SYSCALL_CANCEL (poll, fds, nfds, timeout);
+-#else
+@@ -42 +38,0 @@
+-#endif
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/dup2.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/dup2.c>
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/mkdir.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/mkdir.c>
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/rmdir.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/rmdir.c>
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/64/unlink.c
+@@ -0,0 +1 @@
++#include <sysdeps/unix/sysv/linux/generic/unlink.c>
