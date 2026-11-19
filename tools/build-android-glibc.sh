@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "::error title=Android glibc build::%s:%d: %s\n" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' ERR
 
 triple=${1:?Choose a glibc target triple}
 cache=${2:?Choose a directory for downloads}
@@ -35,8 +36,12 @@ if [[ "$triple" != "$build_triple" ]]; then
 fi
 
 cd "$build"
-CC="$triple-gcc" CFLAGS='-O2 -g0 -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration' \
-  "$source/configure" "${configure_args[@]}"
+if ! CC="$triple-gcc" CFLAGS='-O2 -g0 -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration' \
+  "$source/configure" "${configure_args[@]}" > configure.log 2>&1; then
+  awk '/error:/ { print "::error title=Android glibc configure::" $0 }' configure.log
+  tail -25 configure.log
+  exit 1
+fi
 if ! make -j"$(nproc)" lib > build.log 2>&1; then
   awk '/: error:|undefined reference|No rule to make/ { print "::error title=Android glibc build::" $0; if (++found == 8) exit }' build.log
   tail -25 build.log

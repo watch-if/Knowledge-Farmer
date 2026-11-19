@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "::error title=Android APK build::%s:%d: %s\n" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' ERR
 
 abi=${1:?Usage: build-android.sh arm64-v8a|x86_64 output.apk}
 output=$(realpath -m "${2:?Choose an output APK}")
